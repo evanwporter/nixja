@@ -1,0 +1,121 @@
+rule pycombine
+  description = building $out
+  command = python -B utils/pycombine.py $in > $out && chmod +x $out
+
+rule pycomp
+  description = checking $in
+  command = python utils/pycomp.py -MMD -MF .$out.d $in
+  deps = gcc
+  depfile = .$out.d
+
+rule pycov
+  description = generating python coverage
+  command = typ -c -q $in
+
+rule pep8_rule
+  command = pep8 $in
+  description = pep8 $in
+
+rule pyflakes_rule
+  command = pyflakes $in
+  description = pyflakes $in
+
+rule pylint_rule
+  command = pylint --rcfile pylintrc $in
+  description = pylint $in
+
+rule typ
+  command = typ $in
+  description = running python tests
+
+rule shell
+  command = $shell_cmd
+  description = $shell_desc
+
+
+build lint : phony pyflakes pylint pep8 $
+
+build pylint : pylint_rule $
+    analyzer.py analyzer_test.py $
+    args.py $
+    builder.py $
+    build_graph.py build_graph_test.py $
+    host.py host_fake.py $
+    integration_test.py $
+    main.py main_test.py $
+    parser.py parser_test.py $
+    pool.py $
+    printer.py printer_test.py $
+    pyn_exceptions.py $
+    stats.py stats_test.py $
+    tools.py $
+    var_expander.py var_expander_test.py 
+
+build pep8 : pep8_rule $
+    analyzer.py analyzer_test.py $
+    args.py $
+    builder.py $
+    build_graph.py build_graph_test.py $
+    host.py host_fake.py $
+    integration_test.py $
+    main.py main_test.py $
+    parser.py parser_test.py $
+    pool.py $
+    printer.py printer_test.py $
+    pyn_exceptions.py $
+    stats.py stats_test.py $
+    tools.py $
+    var_expander.py var_expander_test.py 
+
+build pyflakes : pyflakes_rule $
+    analyzer.py analyzer_test.py $
+    args.py $
+    builder.py $
+    build_graph.py build_graph_test.py $
+    host.py host_fake.py $
+    integration_test.py $
+    main.py main_test.py $
+    parser.py parser_test.py $
+    pool.py $
+    printer.py printer_test.py $
+    pyn_exceptions.py $
+    stats.py stats_test.py $
+    tools.py $
+    var_expander.py var_expander_test.py 
+
+build test : typ $
+  analyzer_test.py $
+  build_graph_test.py $
+  main_test.py $
+  parser_test.py $
+  printer_test.py $
+  stats_test.py $
+  var_expander_test.py $
+
+build coverage : pycov $
+    analyzer_test.py $
+    build_graph_test.py $
+    main_test.py $
+    parser_test.py $
+    printer_test.py $
+    stats_test.py $
+    var_expander_test.py
+
+build all : phony bin/pyn
+
+build bin/pyn : pycombine $
+    main.py $
+    analyzer.py $
+    args.py $
+    builder.py $
+    build_graph.py $
+    parser.py $
+    pool.py $
+    printer.py $
+    pyn_exceptions.py $
+    host.py $
+    stats.py $
+    tools.py $
+    var_expander.py
+
+default all

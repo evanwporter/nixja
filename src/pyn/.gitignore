@@ -1,0 +1,14 @@
+bin
+
+*.swp
+*.pyc
+*.pyc.d
+*.py,cover
+
+.pyn.db
+.ninja_deps
+.ninja_log
+.coverage*
+.profiler_data
+.pylint*
+.pytest*
