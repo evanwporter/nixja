@@ -46,7 +46,9 @@ class Builder:
         for node_name in sorted_nodes:
             n = graph.nodes[node_name]
             my_stat = self._stat(node_name)
-            if my_stat is None or any(self._stat(d) > my_stat for d in n.deps()):
+            if my_stat is None or any(
+                self._stat(d) is not None and self._stat(d) > my_stat for d in n.deps()
+            ):
                 nodes_to_build.append(node_name)
                 continue
 

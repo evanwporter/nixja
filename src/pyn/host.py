@@ -101,5 +101,6 @@ class Host:
         return time.time()
 
     def write(self, path, contents):
-        with open(path, "w") as f:
+        mode = "wb" if isinstance(contents, bytes) else "w"
+        with open(path, mode) as f:
             f.write(contents)

@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import cPickle
+import pickle
 import sys
 
 from pyn.analyzer import NinjaAnalyzer
-from args import parse_args
-from builder import Builder
+from pyn.args import parse_args
+from pyn.builder import Builder
 from pyn.host import Host
 from pyn.parser import parse
 from pyn.pyn_exceptions import PynException
@@ -64,7 +64,7 @@ def main(host, argv=None):
         if nodes_to_build:
             res = builder.build(graph, nodes_to_build)
             if graph.is_dirty:
-                graph_str = cPickle.dumps(graph)
+                graph_str = pickle.dumps(graph)
                 host.write(".pyn.db", graph_str)
         else:
             host.print_out("pyn: no work to do.")
@@ -83,7 +83,7 @@ def _load_graphs(host, args):
     needs_rescan = True
     if host.exists(".pyn.db"):
         graph_str = host.read(".pyn.db")
-        old_graph = cPickle.loads(graph_str)
+        old_graph = pickle.loads(graph_str)
 
         graph_mtime = host.mtime(".pyn.db")
         file_mtime = host.mtime(args.file)
