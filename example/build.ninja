@@ -1,0 +1,16 @@
+rule cpp_COMPILER
+  command = g++ $ARGS -MD -MQ $out -MF $DEPFILE -o $out -c $in
+  deps = gcc
+  depfile = $DEPFILE_UNQUOTED
+  description = Compiling C++ object $out
+
+rule cpp_LINKER
+  command = g++ $in -o $out
+  description = Linking C++ executable $out
+
+build main.o: cpp_COMPILER main.cpp
+  DEPFILE = main.o.d
+  DEPFILE_UNQUOTED = main.o.d
+  ARGS = -std=c++17
+
+build main: cpp_LINKER main.o
