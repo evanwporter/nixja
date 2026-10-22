@@ -12,28 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Optional
+
 from pyn.pyn_exceptions import PynException
 
 
 class Graph:
-    def __init__(self, name):
-        self.name = name
-        self.defaults = []
-        self.nodes = {}
-        self.rules = {}
-        self.pools = {}
-        self.scopes = {}
-        self.subninjas = []
-        self.includes = []
-        self.is_dirty = False
+    def __init__(self, name: str) -> None:
+        self.name: str = name
+        self.defaults: list[str] = []
+        self.nodes: dict[str, Node] = {}
+        self.rules: dict[str, "Scope"] = {}
+        self.pools: dict[str, "Scope"] = {}
+        self.scopes: dict[str, "Scope"] = {}
+        self.subninjas: list[str] = []
+        self.includes: list[str] = []
+        self.is_dirty: bool = False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return 'Graph(name="%s")' % self.name
 
-    def roots(self):
+    def roots(self) -> list[str]:
         """Find all the outputs that are not inputs of other outputs."""
-        all_deps = set()
-        roots = set()
+        all_deps: set[str] = set()
+        roots: set[str] = set()
         for n in self.nodes.values():
             for d in n.explicit_deps:
                 all_deps.add(d)
@@ -43,11 +45,11 @@ class Graph:
                     roots.add(d)
         return list(roots)
 
-    def closure(self, targets):
+    def closure(self, targets: list[str]) -> set[str]:
         """Return the set of the targets plus all their dependencies."""
         unvisited_nodes = targets[:]
-        unvisited_set = set(unvisited_nodes)
-        nodes_to_build = set()
+        unvisited_set: set[str] = set(unvisited_nodes)
+        nodes_to_build: set[str] = set()
         while unvisited_nodes:
             node_name = unvisited_nodes.pop(0)
             node = self.nodes[node_name]
@@ -63,7 +65,7 @@ class Graph:
                     unvisited_set.add(d)
         return nodes_to_build
 
-    def tsort(self, nodes_to_build):
+    def tsort(self, nodes_to_build: set[str]) -> list[str]:
         """Sort a list of nodes based on their dependencies (leaves first)."""
 
         # This performs a topological sort of the nodes in the graph by
@@ -123,33 +125,33 @@ class Graph:
 class Node:
     def __init__(
         self,
-        name,
-        scope,
-        outputs,
-        rule_name,
-        explicit_deps=None,
-        implicit_deps=None,
-        order_only_deps=None,
-        depsfile_deps=None,
-    ):
+        name: str,
+        scope: "Scope",
+        outputs: list[str],
+        rule_name: str,
+        explicit_deps: Optional[list[str]] = None,
+        implicit_deps: Optional[list[str]] = None,
+        order_only_deps: Optional[list[str]] = None,
+        depsfile_deps: Optional[list[str]] = None,
+    ) -> None:
         # 'too many arguments' pylint: disable=R0913
-        self.name = name
-        self.scope = scope
-        self.outputs = outputs
-        self.rule_name = rule_name
-        self.explicit_deps = explicit_deps or []
-        self.implicit_deps = implicit_deps or []
-        self.order_only_deps = order_only_deps or []
-        self.depsfile_deps = depsfile_deps or []
-        self.running = False
+        self.name: str = name
+        self.scope: Scope = scope
+        self.outputs: list[str] = outputs
+        self.rule_name: str = rule_name
+        self.explicit_deps: list[str] = explicit_deps or []
+        self.implicit_deps: list[str] = implicit_deps or []
+        self.order_only_deps: list[str] = order_only_deps or []
+        self.depsfile_deps: list[str] = depsfile_deps or []
+        self.running: bool = False
 
-    def deps(self, include_order_only=False):
+    def deps(self, include_order_only: bool = False) -> list[str]:
         node_names = self.explicit_deps + self.implicit_deps + self.depsfile_deps
         if include_order_only:
             node_names += self.order_only_deps
         return node_names
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return 'Node(name="%s")' % self.name
 
 
