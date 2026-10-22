@@ -22,7 +22,7 @@ import unittest
 import main_test
 import parser_test
 
-from host import Host
+from pyn.host import Host
 
 
 PATH_TO_THIS_MODULE = os.path.abspath(__file__)

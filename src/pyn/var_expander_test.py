@@ -14,9 +14,9 @@
 
 import unittest
 
-from build_graph import Scope
-from pyn_exceptions import PynException
-from var_expander import expand_vars
+from pyn.build_graph import Scope
+from pyn.pyn_exceptions import PynException
+from pyn.var_expander import expand_vars
 
 
 class TestExpandVars(unittest.TestCase):

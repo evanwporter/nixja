@@ -14,7 +14,7 @@
 
 import unittest
 
-from stats import Stats
+from pyn.stats import Stats
 
 
 class TestStats(unittest.TestCase):

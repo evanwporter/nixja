@@ -15,8 +15,8 @@
 import textwrap
 import unittest
 
-from parser import parse
-from pyn_exceptions import PynException
+from pyn.parser import parse
+from pyn.pyn_exceptions import PynException
 
 
 class TestNinjaParser(unittest.TestCase):

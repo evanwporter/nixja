@@ -14,11 +14,11 @@
 
 import unittest
 
-from analyzer import NinjaAnalyzer
-from host_fake import FakeHost
-from parser import parse
-from pyn_exceptions import PynException
-from var_expander import expand_vars
+from pyn.analyzer import NinjaAnalyzer
+from pyn.host_fake import FakeHost
+from pyn.parser import parse
+from pyn.pyn_exceptions import PynException
+from pyn.var_expander import expand_vars
 
 
 class TestAnalyzer(unittest.TestCase):

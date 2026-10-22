@@ -16,7 +16,7 @@ import re
 import textwrap
 import unittest
 
-from host_fake import FakeHost
+from pyn.host_fake import FakeHost
 from main import VERSION, main
 
 # FIXME: make this work w/ python3

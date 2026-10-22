@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from pyn_exceptions import PynException
+from pyn.pyn_exceptions import PynException
 
 
 def expand_vars(msg, scope, rule_scope=None):

@@ -14,8 +14,8 @@
 
 import unittest
 
-from build_graph import Graph, Node, Scope
-from pyn_exceptions import PynException
+from pyn.build_graph import Graph, Node, Scope
+from pyn.pyn_exceptions import PynException
 
 # 'too many public methods' pylint: disable=R0904
 

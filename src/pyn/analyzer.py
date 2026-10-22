@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from build_graph import Graph, Node, Scope
-from pyn_exceptions import PynException
+from pyn.build_graph import Graph, Node, Scope
+from pyn.pyn_exceptions import PynException
 
 
 class NinjaAnalyzer:
