@@ -15,6 +15,7 @@
 import os
 import textwrap
 import unittest
+
 # import StringIO
 
 # import main
@@ -27,7 +28,7 @@ from host import Host
 PATH_TO_THIS_MODULE = os.path.abspath(__file__)
 
 
-#def run_under_coverage(argv, host=None):
+# def run_under_coverage(argv, host=None):
 #    host = host or Host()
 #    host.stdout = StringIO.StringIO()
 #    host.stderr = StringIO.StringIO()
@@ -36,14 +37,14 @@ PATH_TO_THIS_MODULE = os.path.abspath(__file__)
 
 
 def path_to_main():
-    path = os.path.join(os.path.dirname(PATH_TO_THIS_MODULE), 'main.py')
-    return path.replace(' ', '\\ ')
+    path = os.path.join(os.path.dirname(PATH_TO_THIS_MODULE), "main.py")
+    return path.replace(" ", "\\ ")
 
 
 class IntegrationTestMixin(object):
     def _files_to_ignore(self):
         # return ['.ninja_deps', '.ninja_log']
-        return ['.pyn.db']
+        return [".pyn.db"]
 
     def _host(self):
         return Host()
@@ -51,7 +52,7 @@ class IntegrationTestMixin(object):
     def _call(self, host, args):
         cmd_prefix = [host.python_interpreter, path_to_main()]
         # return run_under_coverage(args)
-        return host.call(' '.join(cmd_prefix + args))
+        return host.call(" ".join(cmd_prefix + args))
 
 
 class IntegrationTestArgs(IntegrationTestMixin, main_test.TestArgs):
@@ -75,13 +76,13 @@ class IntegrationTestNinjaParser(parser_test.TestNinjaParser):
         try:
             tmpdir = str(host.mkdtemp())
             host.chdir(tmpdir)
-            host.write('build.ninja', text)
+            host.write("build.ninja", text)
             for path, contents in list(files.items()):
                 host.write(path, contents)
 
-            cmd = cmd_prefix + ['-t', 'check']
+            cmd = cmd_prefix + ["-t", "check"]
             # return run_under_coverage(['-t', 'check'], host=host)
-            return host.call(' '.join(cmd))
+            return host.call(" ".join(cmd))
         finally:
             host.rmtree(tmpdir)
             host.chdir(orig_wd)
@@ -104,5 +105,5 @@ class IntegrationTestNinjaParser(parser_test.TestNinjaParser):
         self.assertNotEquals(returncode, 0)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

@@ -21,7 +21,7 @@ import tempfile
 import time
 
 
-class Host(object):
+class Host:
     stderr = sys.stderr
     stdout = sys.stdout
     python_interpreter = sys.executable
@@ -30,8 +30,9 @@ class Host(object):
         return os.path.abspath(self.join(*comps))
 
     def call(self, cmd_str):
-        proc = subprocess.Popen(cmd_str, shell=True, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE)
+        proc = subprocess.Popen(
+            cmd_str, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        )
         stdout, stderr = proc.communicate()
         return proc.returncode, stdout, stderr
 
@@ -75,10 +76,10 @@ class Host(object):
     def mtime(self, *comps):
         return os.stat(self.join(*comps)).st_mtime
 
-    def print_err(self, msg, end='\n'):
+    def print_err(self, msg, end="\n"):
         self.stderr.write(str(msg) + end)
 
-    def print_out(self, msg, end='\n'):
+    def print_out(self, msg, end="\n"):
         self.stdout.write(str(msg) + end)
         self.stdout.flush()
 
@@ -100,5 +101,5 @@ class Host(object):
         return time.time()
 
     def write(self, path, contents):
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             f.write(contents)

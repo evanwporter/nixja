@@ -25,7 +25,7 @@ from tools import tool_names, list_tools, run_tool
 from var_expander import expand_vars
 
 
-VERSION = '0.7'
+VERSION = "0.7"
 
 
 def main(host, argv=None):
@@ -39,7 +39,7 @@ def main(host, argv=None):
         host.print_out(VERSION)
         return 0
 
-    if args.tool == 'list':
+    if args.tool == "list":
         list_tools(host)
         return 0
 
@@ -65,33 +65,33 @@ def main(host, argv=None):
             res = builder.build(graph, nodes_to_build)
             if graph.is_dirty:
                 graph_str = cPickle.dumps(graph)
-                host.write('.pyn.db', graph_str)
+                host.write(".pyn.db", graph_str)
         else:
-            host.print_out('pyn: no work to do.')
+            host.print_out("pyn: no work to do.")
             res = 0
         return res
     except PynException as e:
         host.print_err(str(e))
         return 1
     except KeyboardInterrupt as e:
-        host.print_err('Interrupted, exiting ..')
+        host.print_err("Interrupted, exiting ..")
         return 130  # SIGINT
 
 
 def _load_graphs(host, args):
     old_graph = None
     needs_rescan = True
-    if host.exists('.pyn.db'):
-        graph_str = host.read('.pyn.db')
+    if host.exists(".pyn.db"):
+        graph_str = host.read(".pyn.db")
         old_graph = cPickle.loads(graph_str)
 
-        graph_mtime = host.mtime('.pyn.db')
+        graph_mtime = host.mtime(".pyn.db")
         file_mtime = host.mtime(args.file)
-        needs_rescan = (file_mtime > graph_mtime or
-                        any(host.mtime(f) > graph_mtime for
-                            f in old_graph.includes) or
-                        any(host.mtime(f) > graph_mtime for
-                            f in old_graph.subninjas))
+        needs_rescan = (
+            file_mtime > graph_mtime
+            or any(host.mtime(f) > graph_mtime for f in old_graph.includes)
+            or any(host.mtime(f) > graph_mtime for f in old_graph.subninjas)
+        )
 
     if needs_rescan:
         ast = parse(host.read(args.file), args.file)
@@ -104,5 +104,5 @@ def _load_graphs(host, args):
     return old_graph, graph
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main(Host()))

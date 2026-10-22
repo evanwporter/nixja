@@ -19,7 +19,7 @@ def expand_vars(msg, scope, rule_scope=None):
     return VarExpander(scope, rule_scope).parse(msg)
 
 
-class VarExpander(object):
+class VarExpander:
     """Expand the variables in a string.
 
     grammar = chunk*:cs end         -> ''.join(cs)
@@ -48,12 +48,12 @@ class VarExpander(object):
             return self.rule_scope.objs[var]
         if self.scope.parent:
             return self.scope.parent[var]
-        return ''
+        return ""
 
     def grammar_(self, msg, start, end):
         vs = []
         if start == end:
-            return '', end, None
+            return "", end, None
         v, p, err = self.chunk_(msg, start, end)
         if not err and v:
             vs.append(v)
@@ -63,21 +63,21 @@ class VarExpander(object):
                 vs.append(v)
         if err:
             return (None, p, err)
-        return (''.join(vs), p, err)
+        return ("".join(vs), p, err)
 
     def chunk_(self, msg, start, end):
-        if msg[start] == '$':
+        if msg[start] == "$":
             if end - start == 1:
                 return (None, start + 1, "expecting a varname or a '{'")
-            elif msg[start + 1] in (' ', ':', '$'):
+            elif msg[start + 1] in (" ", ":", "$"):
                 return (msg[start + 1], start + 2, None)
-            elif msg[start + 1] == '{':
+            elif msg[start + 1] == "{":
                 v, p, err = self.varname_(msg, start + 2, end)
                 if err:
                     return (None, p, err)
                 elif p > end - 1:
                     return (None, p, "expecting a closing }")
-                elif msg[p] == '}':
+                elif msg[p] == "}":
                     return (self.lookup(v), p + 1, None)
                 else:
                     return (None, p, "expecting a closing }")
@@ -93,9 +93,9 @@ class VarExpander(object):
     def varname_(self, msg, start, end):
         vs = []
         p = start
-        while p < end and (msg[p].isalpha() or msg[p] == '_'):
+        while p < end and (msg[p].isalpha() or msg[p] == "_"):
             vs.append(msg[p])
             p += 1
         if p > start:
-            return ''.join(vs), p, None
+            return "".join(vs), p, None
         return None, start, "expecting a varname"

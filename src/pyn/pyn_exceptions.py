@@ -13,7 +13,6 @@
 # limitations under the License.
 
 
-
 # FIXME: See if we can get rid of this exception altogether.
 class PynException(Exception):
     pass

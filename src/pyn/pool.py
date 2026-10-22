@@ -13,13 +13,13 @@
 # limitations under the License.
 
 import threading
-import Queue
 
+import Queue
 
 Empty = Queue.Empty  # "Invalid name" pylint: disable=C0103
 
 
-class Pool(object):
+class Pool:
     def __init__(self, num_processes, callback):
         self.num_processes = num_processes
         self.callback = callback
@@ -27,9 +27,9 @@ class Pool(object):
         self.responses = Queue.Queue()
         self.workers = []
         for _ in range(num_processes):
-            w = threading.Thread(target=_loop,
-                                 args=(callback, self.requests,
-                                       self.responses))
+            w = threading.Thread(
+                target=_loop, args=(callback, self.requests, self.responses)
+            )
             w.start()
             self.workers.append(w)
 

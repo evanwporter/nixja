@@ -16,7 +16,7 @@ from build_graph import Graph, Node, Scope
 from pyn_exceptions import PynException
 
 
-class NinjaAnalyzer(object):
+class NinjaAnalyzer:
     def __init__(self, host, args, parse, expand_vars):
         self.host = host
         self.args = args
@@ -33,7 +33,7 @@ class NinjaAnalyzer(object):
 
     def _add_ast(self, graph, scope, ast):
         for decl in ast:
-            graph = getattr(self, '_decl_' + decl[0])(graph, scope, decl)
+            graph = getattr(self, "_decl_" + decl[0])(graph, scope, decl)
         return graph
 
     def _add_subninjas(self, graph):
@@ -48,13 +48,11 @@ class NinjaAnalyzer(object):
     def _merge_graphs(self, graph, subgraph):
         for rule_name, rule_scope in subgraph.rules.items():
             if rule_name in graph.rules:
-                raise PynException("rule '%s' declared in multiple files " %
-                                   rule_name)
+                raise PynException("rule '%s' declared in multiple files " % rule_name)
             graph.rules[rule_name] = rule_scope
         for name, scope in subgraph.scopes.items():
             if name in graph.scopes:
-                raise PynException("scope '%s' declared in multiple files " %
-                                   name)
+                raise PynException("scope '%s' declared in multiple files " % name)
             graph.scopes[name] = scope
 
         self._add_nodes_to_graph(subgraph.nodes, graph)
@@ -73,29 +71,33 @@ class NinjaAnalyzer(object):
     def _add_nodes_to_graph(self, nodes, graph):
         for name, node in nodes.items():
             if name in graph.nodes:
-                raise PynException("build output '%s' declared more than "
-                                   "once " % name)
+                raise PynException("build output '%s' declared more than once " % name)
             graph.nodes[name] = node
 
     def _decl_build(self, graph, scope, decl):
         _, outs, rule_name, edeps, ideps, odeps, build_vars = decl
 
         exp_outs = self._exp(scope, outs)
-        quoted_outs = ' '.join(('"%s"' % o if ' ' in o else o)
-                               for o in exp_outs)
+        quoted_outs = " ".join(('"%s"' % o if " " in o else o) for o in exp_outs)
         exp_edeps = self._exp(scope, edeps)
-        quoted_edeps = ' '.join(('"%s"' % o if ' ' in o else o)
-                                for o in exp_edeps)
+        quoted_edeps = " ".join(('"%s"' % o if " " in o else o) for o in exp_edeps)
         build_scope = Scope(quoted_outs, scope)
-        build_scope['out'] = quoted_outs
-        build_scope['in'] = quoted_edeps
+        build_scope["out"] = quoted_outs
+        build_scope["in"] = quoted_edeps
         self._add_vars_to_scope(build_vars, build_scope)
 
         # FIXME: using exp_outs instead of quoted_outs might get us
         # into trouble; we should probably have a different kind of name
         # entirely.
-        n = Node(' '.join(exp_outs), build_scope, exp_outs, rule_name,
-                 exp_edeps, self._exp(scope, ideps), self._exp(scope, odeps))
+        n = Node(
+            " ".join(exp_outs),
+            build_scope,
+            exp_outs,
+            rule_name,
+            exp_edeps,
+            self._exp(scope, ideps),
+            self._exp(scope, odeps),
+        )
         nodes = {}
         for o in exp_outs:
             nodes[o] = n
@@ -130,14 +132,16 @@ class NinjaAnalyzer(object):
             raise PynException("pool '%s' has too many variables" % name)
 
         _, var_name, var_value = pool_vars[0]
-        if var_name != 'depth':
-            raise PynException("pool '%s' has a variable named %s, not "
-                               "'depth'" % (name, var_name))
+        if var_name != "depth":
+            raise PynException(
+                "pool '%s' has a variable named %s, not 'depth'" % (name, var_name)
+            )
         try:
             depth = int(self.expand_vars(var_value, scope))
         except ValueError:
-            raise PynException("pool '%s'\'s depth value, '%s', is not an int"
-                               % (name, var_value))
+            raise PynException(
+                "pool '%s''s depth value, '%s', is not an int" % (name, var_value)
+            )
 
         graph.pools[name] = depth
         return graph

@@ -15,7 +15,7 @@
 from pyn_exceptions import PynException
 
 
-class Graph(object):
+class Graph:
     def __init__(self, name):
         self.name = name
         self.defaults = []
@@ -54,14 +54,18 @@ class Graph(object):
             unvisited_set.remove(node_name)
             nodes_to_build.add(node_name)
             for d in node.deps():
-                if (d not in nodes_to_build and d not in unvisited_set and
-                        d in self.nodes):
+                if (
+                    d not in nodes_to_build
+                    and d not in unvisited_set
+                    and d in self.nodes
+                ):
                     unvisited_nodes.append(d)
                     unvisited_set.add(d)
         return nodes_to_build
 
     def tsort(self, nodes_to_build):
         """Sort a list of nodes based on their dependencies (leaves first)."""
+
         # This performs a topological sort of the nodes in the graph by
         # picking nodes arbitrarily, and then doing depth-first searches
         # across the graph from there. It should run in O(|nodes|) time.
@@ -71,16 +75,28 @@ class Graph(object):
         # This algorithm diverges a bit from the Wikipedia algorithm by
         # inserting new nodes at the tail of the sorted node list instead
         # of the head, because we want to ultimately do a bottom-up traversal.
-        def visit(node_name, visited_nodes, sorted_nodes, unvisited_nodes,
-                  unvisited_set, sorted_set):
+        def visit(
+            node_name,
+            visited_nodes,
+            sorted_nodes,
+            unvisited_nodes,
+            unvisited_set,
+            sorted_set,
+        ):
             if node_name in visited_nodes:
                 raise PynException("'%s' is part of a cycle" % node_name)
 
             visited_nodes.add(node_name)
             for d in self.nodes[node_name].deps(include_order_only=True):
                 if d in self.nodes and d not in sorted_set:
-                    visit(d, visited_nodes, sorted_nodes, unvisited_nodes,
-                          unvisited_set, sorted_set)
+                    visit(
+                        d,
+                        visited_nodes,
+                        sorted_nodes,
+                        unvisited_nodes,
+                        unvisited_set,
+                        sorted_set,
+                    )
             if node_name in unvisited_nodes:
                 unvisited_nodes.remove(node_name)
                 unvisited_set.remove(node_name)
@@ -93,14 +109,29 @@ class Graph(object):
         sorted_set = set(sorted_nodes)
         unvisited_set = set(unvisited_nodes)
         while unvisited_nodes:
-            visit(unvisited_nodes[0], visited_nodes, sorted_nodes,
-                  unvisited_nodes, unvisited_set, sorted_set)
+            visit(
+                unvisited_nodes[0],
+                visited_nodes,
+                sorted_nodes,
+                unvisited_nodes,
+                unvisited_set,
+                sorted_set,
+            )
         return sorted_nodes
 
 
-class Node(object):
-    def __init__(self, name, scope, outputs, rule_name, explicit_deps=None,
-                 implicit_deps=None, order_only_deps=None, depsfile_deps=None):
+class Node:
+    def __init__(
+        self,
+        name,
+        scope,
+        outputs,
+        rule_name,
+        explicit_deps=None,
+        implicit_deps=None,
+        order_only_deps=None,
+        depsfile_deps=None,
+    ):
         # 'too many arguments' pylint: disable=R0913
         self.name = name
         self.scope = scope
@@ -113,8 +144,7 @@ class Node(object):
         self.running = False
 
     def deps(self, include_order_only=False):
-        node_names = (self.explicit_deps + self.implicit_deps +
-                      self.depsfile_deps)
+        node_names = self.explicit_deps + self.implicit_deps + self.depsfile_deps
         if include_order_only:
             node_names += self.order_only_deps
         return node_names
@@ -123,7 +153,7 @@ class Node(object):
         return 'Node(name="%s")' % self.name
 
 
-class Scope(object):
+class Scope:
     def __init__(self, name, parent):
         self.name = name
         self.parent = parent
@@ -147,4 +177,4 @@ class Scope(object):
             return self.objs[key]
         if self.parent:
             return self.parent[key]
-        return ''
+        return ""

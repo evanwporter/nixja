@@ -12,20 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from pool import Empty, Pool
+from printer import Printer
 from pyn_exceptions import PynException
 from stats import Stats
-from pool import Pool, Empty
-from printer import Printer
 
 
-class Builder(object):
+class Builder:
     def __init__(self, host, args, expand_vars, started_time):
         self.host = host
         self.args = args
         self._should_overwrite = args.overwrite_status and not args.verbose
         self.expand_vars = expand_vars
-        self.stats = Stats(host.getenv('NINJA_STATUS', '[%s/%t] '),
-                           host.time, started_time)
+        self.stats = Stats(
+            host.getenv("NINJA_STATUS", "[%s/%t] "), host.time, started_time
+        )
         self._printer = Printer(host.print_out, self._should_overwrite)
         self._mtimes = {}
         self._failures = 0
@@ -36,24 +37,23 @@ class Builder(object):
         try:
             nodes_to_build = graph.closure(node_names)
         except KeyError as e:
-            raise PynException('error: unknown target %s' % str(e))
+            raise PynException("error: unknown target %s" % str(e))
 
         sorted_nodes = graph.tsort(nodes_to_build)
-        sorted_nodes = [n for n in sorted_nodes
-                        if graph.nodes[n].rule_name != 'phony']
+        sorted_nodes = [n for n in sorted_nodes if graph.nodes[n].rule_name != "phony"]
 
         nodes_to_build = []
         for node_name in sorted_nodes:
             n = graph.nodes[node_name]
             my_stat = self._stat(node_name)
-            if my_stat is None or any(self._stat(d) > my_stat
-                                      for d in n.deps()):
+            if my_stat is None or any(self._stat(d) > my_stat for d in n.deps()):
                 nodes_to_build.append(node_name)
                 continue
 
             if old_graph and node_name in old_graph.nodes:
-                if (self._command(old_graph, node_name) !=
-                        self._command(graph, node_name)):
+                if self._command(old_graph, node_name) != self._command(
+                    graph, node_name
+                ):
                     nodes_to_build.append(node_name)
                     continue
 
@@ -77,15 +77,17 @@ class Builder(object):
                     else:
                         break
                 did_work = self._process_completed_jobs(graph, running_jobs)
-                if (not did_work and nodes_to_build and
-                        self._failures < self.args.errors):
-                    did_work = self._process_completed_jobs(graph,
-                                                            running_jobs,
-                                                            block=True)
+                if (
+                    not did_work
+                    and nodes_to_build
+                    and self._failures < self.args.errors
+                ):
+                    did_work = self._process_completed_jobs(
+                        graph, running_jobs, block=True
+                    )
 
             while running_jobs:
-                did_work = self._process_completed_jobs(graph, running_jobs,
-                                                        block=True)
+                did_work = self._process_completed_jobs(graph, running_jobs, block=True)
         finally:
             self._pool.close()
             self._pool.join()
@@ -97,8 +99,10 @@ class Builder(object):
         next_node = None
         for node_name in nodes_to_build:
             n = graph.nodes[node_name]
-            if not any(d in graph.nodes and graph.nodes[d].running
-                       for d in n.deps(include_order_only=True)):
+            if not any(
+                d in graph.nodes and graph.nodes[d].running
+                for d in n.deps(include_order_only=True)
+            ):
                 next_node = node_name
                 break
 
@@ -107,22 +111,22 @@ class Builder(object):
             # FIXME: is there a better place for this check?
             for d in n.deps():
                 if not self.host.exists(d):
-                    raise PynException("error: '%s', needed by '%s', %s" %
-                                       (d, next_node,
-                                        "missing and no known rule to make "
-                                        "it"))
+                    raise PynException(
+                        "error: '%s', needed by '%s', %s"
+                        % (d, next_node, "missing and no known rule to make it")
+                    )
             nodes_to_build.remove(next_node)
         return next_node
 
     def _command(self, graph, node_name):
         node = graph.nodes[node_name]
         rule_scope = graph.rules[node.rule_name]
-        return self.expand_vars(rule_scope['command'], node.scope, rule_scope)
+        return self.expand_vars(rule_scope["command"], node.scope, rule_scope)
 
     def _description(self, graph, node_name):
         node = graph.nodes[node_name]
         rule_scope = graph.rules[node.rule_name]
-        desc = rule_scope['description'] or rule_scope['command']
+        desc = rule_scope["description"] or rule_scope["command"]
         return self.expand_vars(desc, node.scope, rule_scope)
 
     def _build_node(self, graph, node_name):
@@ -131,7 +135,7 @@ class Builder(object):
         command = self._command(graph, node_name)
         self._build_node_started(node, desc, command)
 
-        dry_run = node.rule_name == 'phony' or self.args.dry_run
+        dry_run = node.rule_name == "phony" or self.args.dry_run
         if not dry_run:
             for o in node.outputs:
                 self.host.maybe_mkdir(self.host.dirname(o))
@@ -165,8 +169,8 @@ class Builder(object):
         rule_scope = graph.rules[n.rule_name]
         n.running = False
 
-        if n.scope['depfile'] and n.scope['deps'] == 'gcc':
-            path = self.expand_vars(n.scope['depfile'], n.scope, rule_scope)
+        if n.scope["depfile"] and n.scope["deps"] == "gcc":
+            path = self.expand_vars(n.scope["depfile"], n.scope, rule_scope)
             if self.host.exists(path):
                 depsfile_deps = self.host.read(path).split()[2:]
                 self.host.remove(path)
@@ -178,7 +182,7 @@ class Builder(object):
 
         if ret:
             self._failures += 1
-            self._update(command, prefix='FAILED: ', elide=False)
+            self._update(command, prefix="FAILED: ", elide=False)
         elif self.args.verbose > 1:
             self._update(command, elide=False)
         elif self._should_overwrite:
@@ -186,9 +190,9 @@ class Builder(object):
         if out or err:
             self._printer.flush()
         if out:
-            self.host.print_out(out, end='')
+            self.host.print_out(out, end="")
         if err:
-            self.host.print_err(err, end='')
+            self.host.print_err(err, end="")
 
     def _update(self, msg, prefix=None, elide=True):
         prefix = prefix or self.stats.format()
@@ -209,7 +213,7 @@ class Builder(object):
 def _call(request):
     node_name, desc, command, dry_run, host = request
     if dry_run:
-        ret, out, err = 0, '', ''
+        ret, out, err = 0, "", ""
     else:
         ret, out, err = host.call(command)
     return (node_name, desc, command, ret, out, err)

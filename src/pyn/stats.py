@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-class Stats(object):
+
+class Stats:
     def __init__(self, status_format, time_fn, started_time):
         self.fmt = status_format
         self.finished = 0
@@ -22,37 +23,38 @@ class Stats(object):
         self._time = time_fn
 
     def format(self):
-        out = ''
+        out = ""
         p = 0
         end = len(self.fmt)
         while p < end:
             c = self.fmt[p]
-            if c == '%' and p < end - 1:
+            if c == "%" and p < end - 1:
                 cn = self.fmt[p + 1]
-                if cn == 'e':
-                    out += '%-5.3f' % (self._time() - self.started_time)
-                elif cn == 'f':
+                if cn == "e":
+                    out += "%-5.3f" % (self._time() - self.started_time)
+                elif cn == "f":
                     out += str(self.finished)
-                elif cn == 'o':
+                elif cn == "o":
                     now = self._time()
                     if now > self.started_time:
-                        out += '%5.1f' % (self.finished * 1.0 /
-                                          (now - self.started_time))
+                        out += "%5.1f" % (
+                            self.finished * 1.0 / (now - self.started_time)
+                        )
                     else:
-                        out += ' --- '
-                elif cn == 'p':
+                        out += " --- "
+                elif cn == "p":
                     if self.total:
-                        out += '%5.1f' % (self.started * 100.0 / self.total)
+                        out += "%5.1f" % (self.started * 100.0 / self.total)
                     else:
-                        out += ' --- '
-                elif cn == 'r':
+                        out += " --- "
+                elif cn == "r":
                     out += str(self.started - self.finished)
-                elif cn == 's':
+                elif cn == "s":
                     out += str(self.started)
-                elif cn == 't':
+                elif cn == "t":
                     out += str(self.total)
-                elif cn == '%':
-                    out += '%'
+                elif cn == "%":
+                    out += "%"
                 else:
                     out += c + cn
                 p += 2
