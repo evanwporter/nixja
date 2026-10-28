@@ -12,29 +12,35 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from typing import Any, cast
+
 from pyn.pyn_exceptions import PynException
 
+type Declaration = list[Any]
+type Ast = list[Declaration]
+type ParseResult = tuple[Any | None, int, str | None]
 
-def parse(msg, fname):
+
+def parse(msg: str, fname: str) -> Ast:
     return NinjaParser(msg, fname).parse()
 
 
 class NinjaParser:
     """Parse the contents of a .ninja file and return an AST."""
 
-    def __init__(self, msg, fname):
+    def __init__(self, msg: str, fname: str) -> None:
         self.msg = msg
         self.end = len(msg)
         self.fname = fname
 
-    def parse(self):
+    def parse(self) -> Ast:
         msg = self.msg
-        v, p, err = self.grammar_(0)
-        if err:
+        value, position, error = self.grammar_(0)
+        if error is not None:
             lineno = 1
             colno = 1
             i = 0
-            while i < p:
+            while i < position:
                 if msg[i] == "\n":
                     lineno += 1
                     colno = 1
@@ -43,17 +49,17 @@ class NinjaParser:
                 i += 1
 
             pos_str = "%s:%d:%d" % (self.fname, lineno, colno)
-            raise PynException("%s %s" % (pos_str, err))
-        else:
-            return v
+            raise PynException("%s %s" % (pos_str, error))
+        assert value is not None
+        return cast(Ast, value)
 
-    def expect(self, start, substr):
+    def expect(self, start: int, substr: str) -> ParseResult:
         l = len(substr)
         if (self.end - start) < l or self.msg[start : start + l] != substr:
             return None, start, 'expecting "%s" at %d' % (substr, start)
         return substr, start + l, None
 
-    def grammar_(self, start):
+    def grammar_(self, start: int) -> ParseResult:
         """((empty_line* decl)*:ds empty_line*) end -> ds"""
         ds = []
         err = None
@@ -71,7 +77,7 @@ class NinjaParser:
         else:
             return None, p, err
 
-    def decl_(self, start):
+    def decl_(self, start: int) -> ParseResult:
         """build | rule | subninja | include | pool | default | var"""
         v, p, err = self.build_(start)
         if not err:
@@ -110,7 +116,7 @@ class NinjaParser:
             ),
         )
 
-    def build_(self, start):
+    def build_(self, start: int) -> ParseResult:
         """ "build" ws paths:os ws? ':' ws name:rule
         explicit_deps:eds implicit_deps:ids order_only_deps:ods eol
         ws_vars:vs -> ['build', os, rule, eds, ids, ods, vs]"""
@@ -157,7 +163,7 @@ class NinjaParser:
 
         return ["build", os, rule, eds, ids, ods, vs], p, None
 
-    def rule_(self, start):
+    def rule_(self, start: int) -> ParseResult:
         """ "rule" ws name:n eol ws_vars:vs -> ['rule', n, vs]"""
         p = start
 
@@ -181,7 +187,7 @@ class NinjaParser:
 
         return ["rule", n, vs], p, None
 
-    def ws_vars_(self, start):
+    def ws_vars_(self, start: int) -> ParseResult:
         """(ws var)*:vs -> vs"""
         p = start
         vs = []
@@ -194,7 +200,7 @@ class NinjaParser:
                     vs.append(v)
         return vs, p, None
 
-    def var_(self, start):
+    def var_(self, start: int) -> ParseResult:
         """name:n ws? '=' ws? value:v eol -> ['var', n, v]"""
         n, p, err = self.name_(start)
         if err:
@@ -213,7 +219,7 @@ class NinjaParser:
         _, p, _ = self.eol_(p)
         return ["var", n, v], p, None
 
-    def value_(self, start):
+    def value_(self, start: int) -> ParseResult:
         """(~'\n' (('$' ' ' -> ' ')|('$' '\n' ' '+ -> '')|anything))*:vs
         -> ''.join(vs)"""
         msg, p, end = self.msg, start, self.end
@@ -233,7 +239,7 @@ class NinjaParser:
             # _, _, err = self.eol_(p)
         return "".join(vs), p, None
 
-    def subninja_(self, start):
+    def subninja_(self, start: int) -> ParseResult:
         """ "subninja" ws path:p eol -> ['subninja', p]"""
         v, p, err = self.expect(start, "subninja")
         if err:
@@ -250,7 +256,7 @@ class NinjaParser:
         _, p, err = self.eol_(p)
         return ["subninja", v], p, None
 
-    def include_(self, start):
+    def include_(self, start: int) -> ParseResult:
         """ "include" ws path:p eol -> ['include', p]"""
         v, p, err = self.expect(start, "include")
         if err:
@@ -267,7 +273,7 @@ class NinjaParser:
         _, p, err = self.eol_(p)
         return ["include", v], p, None
 
-    def pool_(self, start):
+    def pool_(self, start: int) -> ParseResult:
         """ "pool" ws name:n eol ws_vars:vs -> ['pool', n, vs]"""
         _, p, err = self.expect(start, "pool")
         if err:
@@ -284,7 +290,7 @@ class NinjaParser:
         vs, p, _ = self.ws_vars_(p)
         return ["pool", n, vs], p, None
 
-    def default_(self, start):
+    def default_(self, start: int) -> ParseResult:
         """ "default" ws paths:ps eol  -> ['default', ps]"""
         v, p, err = self.expect(start, "default")
         if err:
@@ -301,7 +307,7 @@ class NinjaParser:
         _, p, err = self.eol_(p)
         return ["default", v], p, None
 
-    def paths_(self, start):
+    def paths_(self, start: int) -> ParseResult:
         """path:hd (ws path)*:tl -> [hd] + tl"""
         hd, p, err = self.path_(start)
         tl = []
@@ -316,7 +322,7 @@ class NinjaParser:
                     tl.append(v)
         return [hd] + tl, p, None
 
-    def path_(self, start):
+    def path_(self, start: int) -> ParseResult:
         """(('$' ' ')|(~(' '|':'|'='|'|'|eol) anything))+:vs -> ''.join(vs)"""
         msg, p, end = self.msg, start, self.end
         vs = []
@@ -341,7 +347,7 @@ class NinjaParser:
         else:
             return "".join(vs), p, None
 
-    def name_(self, start):
+    def name_(self, start: int) -> ParseResult:
         """(letter|'_'):hd (letter|digit|'_')*:tl -> ''.join([hd] + tl)"""
         if start == self.end:
             return None, start, "expecting a name"
@@ -361,7 +367,7 @@ class NinjaParser:
                 break
         return hd + "".join(tl), p, None
 
-    def explicit_deps_(self, start):
+    def explicit_deps_(self, start: int) -> ParseResult:
         """ws? paths:ps -> ps | -> []"""
         if start == self.end:
             return [], start, None
@@ -373,7 +379,7 @@ class NinjaParser:
             return [], start, None
         return ps, p, None
 
-    def implicit_deps_(self, start):
+    def implicit_deps_(self, start: int) -> ParseResult:
         """ws? (~'|' '|') '|' ws? paths:ps -> ps | -> []"""
         msg = self.msg
         if start == self.end:
@@ -395,7 +401,7 @@ class NinjaParser:
             return None, p, err
         return ps, p, None
 
-    def order_only_deps_(self, start):
+    def order_only_deps_(self, start: int) -> ParseResult:
         """ws? '|' '|' ws? paths:ps -> ps | -> []"""
         if start == self.end:
             return [], start, None
@@ -413,7 +419,7 @@ class NinjaParser:
             return None, p, err
         return ps, p, None
 
-    def empty_line_(self, start):
+    def empty_line_(self, start: int) -> ParseResult:
         """ws? comment? ('\n'|end)"""
         msg, p, end = self.msg, start, self.end
         _, p, _ = self.ws_(start)
@@ -425,7 +431,7 @@ class NinjaParser:
             return None, p, None
         return None, p, "expecting a '\n' or EOF"
 
-    def eol_(self, start):
+    def eol_(self, start: int) -> ParseResult:
         """ws? ('\n' | end)"""
         msg, p, end = self.msg, start, self.end
         if start < end and (msg[start] == " " or msg[start] == "$"):
@@ -440,7 +446,7 @@ class NinjaParser:
         else:
             return None, p, None
 
-    def ws_(self, start):
+    def ws_(self, start: int) -> ParseResult:
         """(' '|('$' '\n'))+"""
         msg, p, end = self.msg, start, self.end
         if start == end:
@@ -458,7 +464,7 @@ class NinjaParser:
         else:
             return None, p, None
 
-    def comment_(self, start):
+    def comment_(self, start: int) -> ParseResult:
         """'#' (~'\n' anything)* ('\n'|end)"""
         msg, p, end = self.msg, start, self.end
         if msg[p] != "#":
