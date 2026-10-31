@@ -57,13 +57,6 @@ class Dependency:
             return self.value
 
     @property
-    def outside_str(self) -> str:
-        if self.is_node:
-            return self.value.replace(".", "_")
-        else:
-            return self.value
-
-    @property
     def source_path(self) -> str:
         """Render a source dependency relative to the generated Nix file."""
         return "./" + self.value

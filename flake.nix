@@ -1,5 +1,5 @@
 {
-	description = "Python development environment";
+	description = "C++/Python development environment";
 
 	inputs = {
 		nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -109,6 +109,12 @@
 								uv
 								clang-tools
 								ninja
+								bear
+								gnumake
+								cmake
+								jq
+								inja
+								nlohmann_json
 							];
 
 							shellHook = ''

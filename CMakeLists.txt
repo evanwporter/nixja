@@ -8,19 +8,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(NINJA_BUILD_BINARY OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
+find_package(inja CONFIG REQUIRED)
+
 add_subdirectory(external/ninja)
 
-add_executable(nixja
-    src/main.cpp
-)
+add_subdirectory(src/nixja)
 
-target_include_directories(nixja PRIVATE
-    third_party/ninja/src
-)
-
-target_link_libraries(nixja PRIVATE
-    libninja
-    libninja-re2c
-)
-
-install(TARGETS nixja RUNTIME DESTINATION bin)
+add_subdirectory(src/nixja-gen)
