@@ -1,0 +1,3 @@
+[submodule "hello/external"]
+	path = external
+	url = https://github.com/ninja-build/ninja/
