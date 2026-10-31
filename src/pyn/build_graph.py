@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from typing import Optional
 
 from pyn.pyn_exceptions import PynException
 
@@ -22,9 +21,9 @@ class Graph:
         self.name: str = name
         self.defaults: list[str] = []
         self.nodes: dict[str, Node] = {}
-        self.rules: dict[str, "Scope"] = {}
-        self.pools: dict[str, "Scope"] = {}
-        self.scopes: dict[str, "Scope"] = {}
+        self.rules: dict[str, Scope] = {}
+        self.pools: dict[str, int] = {}
+        self.scopes: dict[str, Scope] = {}
         self.subninjas: list[str] = []
         self.includes: list[str] = []
         self.is_dirty: bool = False
@@ -129,10 +128,21 @@ class Node:
         scope: "Scope",
         outputs: list[str],
         rule_name: str,
-        explicit_deps: Optional[list[str]] = None,
-        implicit_deps: Optional[list[str]] = None,
-        order_only_deps: Optional[list[str]] = None,
-        depsfile_deps: Optional[list[str]] = None,
+        # Explicit dependencies: Listed directly after the rule name (e.g., build foo.o : cc foo.c)
+        #   - These are the primary inputs to the build command
+        #   - Changes to these files trigger rebuilds
+        #   - They appear in the $in variable available to the build command
+        explicit_deps: list[str] | None = None,
+        # Implicit dependencies: Listed after a single pipe | (e.g., build foo.o : cc foo.c | foo.h)
+        #   - These are dependencies that are not direct inputs but still trigger rebuilds when modified (like header files)
+        #   - Changes to these files trigger rebuilds
+        #   - They do NOT appear in the $in variable
+        implicit_deps: list[str] | None = None,
+        # Order-only dependencies: Listed after double pipes || (e.g., build foo.o : cc foo.c || foo.idl)
+        #   - These must be built before the target, but changes to them don't trigger rebuilds
+        #   - Used for dependencies that only need to exist, not be up-to-date
+        order_only_deps: list[str] | None = None,
+        depsfile_deps: list[str] | None = None,
     ) -> None:
         # 'too many arguments' pylint: disable=R0913
         self.name: str = name

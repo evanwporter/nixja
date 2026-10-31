@@ -211,15 +211,16 @@ They are computed differently (again psuedo-code):
 ```python
 # For content-addressed derivations
 def unknown_ca_output(drv_path: str, output_name: str) -> str:
-    drv_name = drv_path.removesuffix('.drv')
+    drv_name = drv_path.removesuffix(".drv")
     clear_text = f"nix-upstream-output:{drv_path.hash_part}:{drv_name}-{output_name}"
     digest = sha256sum(clear_text)
     return nixbase32.encode(digest)
 
+
 # For dynamic derivations
 def unknown_derivation(placeholder: str, output_name: str) -> str:
     # Take first 20 bytes of the input placeholder hash
-    compressed = placeholder[:20] 
+    compressed = placeholder[:20]
     clear_text = f"nix-computed-output:{compressed}:{output_name}"
     digest = sha256sum(clear_text)
     return nixbase32.encode(digest)

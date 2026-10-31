@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from nixja!")
+"""Nixja build-generation tools."""

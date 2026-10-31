@@ -12,18 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any, Protocol
+
 from pyn.build_graph import Graph, Node, Scope
 from pyn.pyn_exceptions import PynException
 
+# Parser declarations are heterogeneous lists whose shape depends on their tag.
+type Declaration = list[Any]
+type Ast = list[Declaration]
+
+
+class AnalyzerHost(Protocol):
+    def exists(self, *comps: str) -> bool: ...
+
+    def read(self, *comps: str) -> str: ...
+
 
 class NinjaAnalyzer:
-    def __init__(self, host, args, parse, expand_vars):
+    def __init__(
+        self,
+        host: AnalyzerHost,
+        parse: Callable[[str, str], Ast],
+        expand_vars: Callable[[str, Scope], str],
+    ) -> None:
         self.host = host
-        self.args = args
         self.parse = parse
         self.expand_vars = expand_vars
 
-    def analyze(self, ast, filename, parent_scope=None):
+    def analyze(
+        self, ast: Ast, filename: str, parent_scope: Scope | None = None
+    ) -> Graph:
         graph = Graph(filename)
         scope = Scope(filename, parent_scope)
         graph.scopes[filename] = scope
@@ -31,12 +50,12 @@ class NinjaAnalyzer:
         graph = self._add_subninjas(graph)
         return graph
 
-    def _add_ast(self, graph, scope, ast):
+    def _add_ast(self, graph: Graph, scope: Scope, ast: Ast) -> Graph:
         for decl in ast:
             graph = getattr(self, "_decl_" + decl[0])(graph, scope, decl)
         return graph
 
-    def _add_subninjas(self, graph):
+    def _add_subninjas(self, graph: Graph) -> Graph:
         for path in graph.subninjas:
             if not self.host.exists(path):
                 raise PynException("'%s' not found." % path)
@@ -45,7 +64,7 @@ class NinjaAnalyzer:
             graph = self._merge_graphs(graph, subgraph)
         return graph
 
-    def _merge_graphs(self, graph, subgraph):
+    def _merge_graphs(self, graph: Graph, subgraph: Graph) -> Graph:
         for rule_name, rule_scope in subgraph.rules.items():
             if rule_name in graph.rules:
                 raise PynException("rule '%s' declared in multiple files " % rule_name)
@@ -58,23 +77,25 @@ class NinjaAnalyzer:
         self._add_nodes_to_graph(subgraph.nodes, graph)
         return graph
 
-    def _exp(self, scope, paths):
+    def _exp(self, scope: Scope, paths: Iterable[str]) -> list[str]:
         return [self.expand_vars(p, scope) for p in paths]
 
-    def _add_vars_to_scope(self, var_decls, scope, expand=True):
+    def _add_vars_to_scope(
+        self, var_decls: Iterable[list[str]], scope: Scope, expand: bool = True
+    ) -> None:
         for _, name, val in var_decls:
             if expand:
                 scope.objs[name] = self.expand_vars(val, scope)
             else:
                 scope.objs[name] = val
 
-    def _add_nodes_to_graph(self, nodes, graph):
+    def _add_nodes_to_graph(self, nodes: Mapping[str, Node], graph: Graph) -> None:
         for name, node in nodes.items():
             if name in graph.nodes:
                 raise PynException("build output '%s' declared more than once " % name)
             graph.nodes[name] = node
 
-    def _decl_build(self, graph, scope, decl):
+    def _decl_build(self, graph: Graph, scope: Scope, decl: Declaration) -> Graph:
         _, outs, rule_name, edeps, ideps, odeps, build_vars = decl
 
         exp_outs = self._exp(scope, outs)
@@ -98,20 +119,20 @@ class NinjaAnalyzer:
             self._exp(scope, ideps),
             self._exp(scope, odeps),
         )
-        nodes = {}
+        nodes: dict[str, Node] = {}
         for o in exp_outs:
             nodes[o] = n
         self._add_nodes_to_graph(nodes, graph)
 
         return graph
 
-    def _decl_default(self, graph, scope, decl):
+    def _decl_default(self, graph: Graph, scope: Scope, decl: Declaration) -> Graph:
         _, defaults = decl
 
         graph.defaults = graph.defaults + self._exp(scope, defaults)
         return graph
 
-    def _decl_include(self, graph, scope, decl):
+    def _decl_include(self, graph: Graph, scope: Scope, decl: Declaration) -> Graph:
         _, path = decl
         full_path = self.expand_vars(path, scope)
         if not self.host.exists(full_path):
@@ -121,7 +142,7 @@ class NinjaAnalyzer:
         graph.includes.append(full_path)
         return graph
 
-    def _decl_pool(self, graph, scope, decl):
+    def _decl_pool(self, graph: Graph, scope: Scope, decl: Declaration) -> Graph:
         _, name, pool_vars = decl
 
         if name in graph.pools:
@@ -146,7 +167,7 @@ class NinjaAnalyzer:
         graph.pools[name] = depth
         return graph
 
-    def _decl_rule(self, graph, scope, decl):
+    def _decl_rule(self, graph: Graph, scope: Scope, decl: Declaration) -> Graph:
         _, rule_name, rule_vars = decl
 
         if rule_name in graph.rules:
@@ -157,11 +178,11 @@ class NinjaAnalyzer:
         graph.rules[rule_name] = rule_scope
         return graph
 
-    def _decl_subninja(self, graph, scope, decl):
+    def _decl_subninja(self, graph: Graph, scope: Scope, decl: Declaration) -> Graph:
         _, path = decl
         graph.subninjas.append(self.expand_vars(path, scope))
         return graph
 
-    def _decl_var(self, graph, scope, decl):
+    def _decl_var(self, graph: Graph, scope: Scope, decl: Declaration) -> Graph:
         self._add_vars_to_scope([decl], scope)
         return graph
