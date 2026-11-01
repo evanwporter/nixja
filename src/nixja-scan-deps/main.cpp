@@ -1,4 +1,3 @@
-#include "nixja-scan-deps.hpp"
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -18,6 +17,8 @@
 
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
+
+#include "nixja-scan-deps.hpp"
 
 namespace fs = std::filesystem;
 
