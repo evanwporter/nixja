@@ -2,7 +2,7 @@
 
 Drop in (not really) replacement for ninja.
 
-The primary goal is to combine ninja + nix.
+The primary goal is to combine ninja + nix. Another goal is to keep it simple (see [this article](https://grugbrain.dev/))
 
 If it wasn't obvious this is my WIP take on nix-ninja.
 
@@ -37,4 +37,6 @@ Unlike nix-ninja, this is built in C++. There are two reasons for this choice:
 (2) Eventually I want to interface directly with llvm (instead of going through `clang-scan-deps`) to parse files and discover dependencies. This looks like static linking against llvm (somehow) and modifying clang-scan-deps directly to fit my projects. Then I'll probably due a hefty strip of all the unused symbols. Idk how this would be done in rust easily.
 
 (3) I <3 C++.
+
+
 
