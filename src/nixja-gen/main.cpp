@@ -49,6 +49,7 @@ std::string exec(const char* cmd) {
 }
 
 /// Parse Makefile dependency output from clang-scan-deps
+/// TODO: Use whatever ninja uses internally
 std::unordered_map<std::string, std::unordered_set<std::string>>
 parse_makefile(std::string makefile_content) {
     std::unordered_map<std::string, std::unordered_set<std::string>>
@@ -120,7 +121,6 @@ local_dependencies(
     return local;
 }
 
-/// Scan compiler dependencies
 std::string shell_quote(const std::string& value) {
     std::string result = "'";
 
@@ -134,6 +134,7 @@ std::string shell_quote(const std::string& value) {
     return result + "'";
 }
 
+/// Scan compiler dependencies
 std::unordered_map<std::string, std::unordered_set<std::string>>
 scan_dependencies() {
     const fs::path compdb_file = fs::current_path() / "compile_commands.json";
@@ -186,6 +187,7 @@ std::string command_for(
 }
 
 /// Determine whether a command uses a depfile
+/// TODO: Use ninja internals to figure this out
 bool has_depfile(const std::string& command) {
     std::istringstream stream(command);
     std::string arg;
@@ -219,6 +221,9 @@ json dependency_for(
         { "source_path", "./" + value }
     };
 }
+
+// TODO: Combine the next two functions into one simpler one
+// The only difference is how it forms the dep list
 
 /// StandardItem
 json make_standard_item(
@@ -407,9 +412,6 @@ int main(int argc, char* argv[]) {
             { "depItems", dep_items },
             { "target", target }
         };
-
-        // Locate and render template.
-        fs::path template_path = fs::path(__FILE__).parent_path() / "nixja-gen.nix.j2";
 
         inja::Environment env;
 
