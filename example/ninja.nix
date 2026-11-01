@@ -1,4 +1,3 @@
-
 {pkgs}: let
 	# nixjaGen = builtins.storePath "@nixjaGen@";
 	hello_drv =
@@ -13,8 +12,8 @@
 				outputHashAlgo = "sha256";
 
 				buildInputs = [pkgs.nix];
-                
-                # TODO: figure out what I need
+
+				# TODO: figure out what I need
 				nativeBuildInputs = with pkgs; [
 					python3
 					python314Packages.jinja2
@@ -49,7 +48,7 @@
 		pkgs.runCommand "hello" {
 			__contentAddressed = true;
 		} ''
-			cp -r ${ hello_drv } "$out"
+			cp -r ${hello_drv} "$out"
 		'';
 in
 	hello
