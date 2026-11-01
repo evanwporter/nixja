@@ -42,6 +42,8 @@ Unlike nix-ninja, this is built in C++. There are two reasons for this choice:
 
 (1) Build it
 
+(1.5) Stage all files
+
 (2) Navigate to `example/`
 
 (3) Run `./nixja hello`
