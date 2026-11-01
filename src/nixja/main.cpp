@@ -43,6 +43,7 @@ void run_command(const std::vector<std::string>& args) {
         throw std::runtime_error("Command failed: " + args[0]);
 }
 
+// TODO: allow specifying a store that's not /nix/store
 int main(int argc, char* argv[]) {
     try {
         if (argc < 2) {

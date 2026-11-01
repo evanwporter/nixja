@@ -1,3 +1,4 @@
+# This file is the output of nixja-gen
 # nix-build --show-trace -E 'import ./hello/nixja.nix { pkgs = import <nixpkgs> {}; }'
 {pkgs}: let
 	fs = pkgs.lib.fileset;
@@ -55,7 +56,7 @@
 					outputs_str = "${builtins.concatStringsSep " " outputs}";
 				in ''
 					./nixja-scan-deps -i TODO -o ${outputs_str} -- ${command} > derivation.nix
-					cat derivation.nix
+
 				'';
 
 				installPhase = ''

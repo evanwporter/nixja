@@ -44,7 +44,7 @@ let
             outputs_str = "${builtins.concatStringsSep " " outputs}";
         in ''
             ./nixja-scan-deps -i TODO -o ${outputs_str} -- ${command} > derivation.nix
-            cat derivation.nix
+            {# cat derivation.nix #}
         '';
 
         installPhase = ''

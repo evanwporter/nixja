@@ -32,7 +32,7 @@
 					cd ./hello
 					ninja -t compdb c_COMPILER > compile_commands.json
 					python ../src/nixja/nixja-gen.py {{ target }} > derivation.nix
-					# cat derivation.nix
+					{# cat derivation.nix #}
 				'';
 
 				installPhase = ''

@@ -1,3 +1,4 @@
+# This file is the output of nixja-scan-deps
 {pkgs}: let
 	fs = pkgs.lib.fileset;
 
