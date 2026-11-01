@@ -1,7 +1,8 @@
 {
-	description = "C++/Python development environment";
+	description = "Nixja C++ development environment";
 
 	inputs = {
+		self.submodules = true;
 		nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 	};
 
@@ -16,62 +17,101 @@
 			"x86_64-darwin"
 		];
 
-		# Construct a package set with our overlay.
 		pkgsFor = system:
 			import nixpkgs {
 				inherit system;
 				overlays = [self.overlays.default];
 			};
 
-		# Apply a function to every supported system.
 		forAllSystems = f:
 			nixpkgs.lib.genAttrs systems (system:
 				f (pkgsFor system));
 	in {
 		overlays.default = final: prev: {
+			# C++ generator
 			nixja-gen =
-				final.python313Packages.buildPythonApplication {
+				final.stdenv.mkDerivation {
 					name = "nixja-gen";
 
 					src = self;
-					pyproject = true;
 
-					build-system = [
-						final.python313Packages.setuptools
+					nativeBuildInputs = [
+						final.cmake
+						final.makeWrapper
 					];
 
-					dependencies = [
-						final.python313Packages.jinja2
+					buildInputs = [
+						final.inja
+						final.nlohmann_json
 					];
+
+					cmakeBuildType = "Release";
+					cmakeBuildFlags = [
+						"--target"
+						"nixja-gen"
+					];
+
+					installPhase = ''
+						runHook preInstall
+						install -Dm755 src/nixja-gen/nixja-gen "$out/bin/nixja-gen"
+						runHook postInstall
+					'';
+
+					# postFixup = ''
+					# 	wrapProgram $out/bin/nixja-gen \
+					# 		--prefix PATH : ${final.lib.makeBinPath [
+					# 			final.ninja
+					# 			final.clang-tools
+					# 		]}
+					# '';
 				};
 
+			# C++ driver
 			nixja =
-				final.python313Packages.buildPythonApplication {
+				final.stdenv.mkDerivation {
 					name = "nixja";
 
 					src = self;
-					pyproject = true;
 
-					build-system = [
-						final.python313Packages.setuptools
+					nativeBuildInputs = [
+						final.cmake
+						final.makeWrapper
 					];
 
-					postPatch = ''
-						substituteInPlace src/nixja/nixja.nix.j2 \
-						    --replace-fail "python ../src/nixja/nixja-gen.py" \
-						    "${final.nixja-gen}/bin/nixja-gen"
+					buildInputs = [
+						final.inja
+						final.nlohmann_json
+					];
+
+					cmakeBuildType = "Release";
+					cmakeBuildFlags = [
+						"--target"
+						"nixja"
+					];
+
+					installPhase = ''
+						runHook preInstall
+						install -Dm755 src/nixja/nixja "$out/bin/nixja"
+						runHook postInstall
 					'';
 
-					dependencies = [
-						final.python313Packages.jinja2
-					];
+					postPatch = ''
+						substituteInPlace src/nixja/nixja.hpp \
+						    --replace-fail "@nixjaGen@" "${final.nixja-gen}"
+					'';
+
+					# postFixup = ''
+					# 	wrapProgram $out/bin/nixja \
+					# 		--prefix PATH : ${final.lib.makeBinPath [
+					# 			final.nix
+					# 			final.nixja-gen
+					# 		]}
+					# '';
 				};
 		};
 
-		# Expose customized package sets.
 		pkgs = pkgsFor;
 
-		# Packages.
 		packages =
 			forAllSystems (pkgs: {
 					default = pkgs.nixja;
@@ -79,7 +119,6 @@
 					nixja-gen = pkgs.nixja-gen;
 				});
 
-		# Applications.
 		apps =
 			forAllSystems (pkgs: {
 					default = {
@@ -98,23 +137,32 @@
 					};
 				});
 
-		# Development shells.
 		devShells =
 			forAllSystems (pkgs: {
 					default =
 						pkgs.mkShell {
 							packages = with pkgs; [
+								# C++ development
+								clang
+								clang-tools
+								cmake
+								ninja
+								gcc
+								inja
+								nlohmann_json
+
+								# Nix
+								nix
+
+								# Python development
 								python313
 								python313Packages.jinja2
 								uv
-								clang-tools
-								ninja
+
+								# Utilities
 								bear
 								gnumake
-								cmake
 								jq
-								inja
-								nlohmann_json
 							];
 
 							shellHook = ''
