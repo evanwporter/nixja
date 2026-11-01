@@ -1,11 +1,11 @@
 rule c_COMPILER
-  command = gcc -MD -MQ $out -MF $DEPFILE -o $out -c $in
+  command = cc -MD -MQ $out -MF $DEPFILE -o $out -c $in
   deps = gcc
   depfile = $out.d
   description = Compiling C object $out
 
 rule c_LINKER
-  command = gcc $in -o $out
+  command = cc $in -o $out
   description = Linking C executable $out
 
 build main.o: c_COMPILER src/main.c

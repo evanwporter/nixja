@@ -1,37 +1,35 @@
-# nix-build \
-#   --extra-experimental-features 'ca-derivations dynamic-derivations' \
-#   --show-trace \
-#   -E 'import ./nixja-full.nix { pkgs = import <nixpkgs> {}; }'
 {pkgs}: let
+	nixjaGen = builtins.storePath "/nix/store/33ji5p4cb377wr1has68bggnq2la4hsk-nixja-gen";
 	hello_drv =
 		builtins.outputOf
 		(pkgs.stdenvNoCC.mkDerivation
 			{
 				name = "hello.drv";
 
-				src = ../.;
+				src = ./.;
 
 				outputHashMode = "text";
 				outputHashAlgo = "sha256";
 
 				buildInputs = [pkgs.nix];
-                
-                # TODO: figure out what I need
-				nativeBuildInputs = with pkgs; [
-					python3
-					python314Packages.jinja2
-					clang-tools
-					gcc
-					ninja
-				];
+
+				# TODO: figure out what I need
+				nativeBuildInputs = with pkgs;
+					[
+						python3
+						python314Packages.jinja2
+						clang-tools
+						gcc
+						ninja
+					]
+					++ [nixjaGen];
 
 				# This is necessary so we can invoke `nix-instantiate` below
 				requiredSystemFeatures = ["recursive-nix"];
 
 				buildPhase = ''
-					cd ./hello
 					ninja -t compdb c_COMPILER > compile_commands.json
-					python ../src/nixja/nixja-gen.py hello > derivation.nix
+					${nixjaGen}/bin/nixja-gen hello > derivation.nix
 					# cat derivation.nix
 				'';
 
@@ -52,7 +50,7 @@
 		pkgs.runCommand "hello" {
 			__contentAddressed = true;
 		} ''
-			cp ${ hello_drv } "$out"
+			cp ${hello_drv} "$out"
 		'';
 in
 	hello

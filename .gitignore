@@ -10,3 +10,8 @@ wheels/
 .venv
 
 .direnv/
+
+result/
+result
+
+compile_commands.json

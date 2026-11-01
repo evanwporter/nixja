@@ -138,16 +138,18 @@
 				});
 
 		devShells =
-			forAllSystems (pkgs: {
+			forAllSystems (pkgs: let
+				llvmPkgs = pkgs.llvmPackages_22;
+			in {
 					default =
-						pkgs.mkShell {
+						(pkgs.mkShell.override {
+								stdenv = llvmPkgs.stdenv;
+							}) {
 							packages = with pkgs; [
 								# C++ development
-								clang
-								clang-tools
+								llvmPkgs.clang-tools
 								cmake
 								ninja
-								gcc
 								inja
 								nlohmann_json
 

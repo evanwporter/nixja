@@ -155,7 +155,7 @@ scan_dependencies() {
 
     temp_buffer.push_back('\0');
 
-    char* created = mkdtemp(temp_buffer.data());
+    const char* created = mkdtemp(temp_buffer.data());
 
     if (!created)
         throw std::runtime_error("Could not create temporary directory");
