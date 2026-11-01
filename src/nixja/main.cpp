@@ -44,6 +44,7 @@ void run_command(const std::vector<std::string>& args) {
 }
 
 // TODO: allow specifying a store that's not /nix/store
+// TODO: Generate derivation files directly instead of using nix-instantiate
 int main(int argc, char* argv[]) {
     try {
         if (argc < 2) {
