@@ -13,3 +13,5 @@ wheels/
 
 result/
 result
+
+compile_commands.json
