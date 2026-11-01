@@ -32,26 +32,19 @@ namespace fs = std::filesystem;
 using json = nlohmann::json;
 
 /// Execute shell command and capture stdout
-std::string exec(const std::string& command) {
-    std::array<char, 4096> buffer { };
+// Source - https://stackoverflow.com/a/478960
+// Posted by waqas, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-10-31, License - CC BY-SA 4.0
+std::string exec(const char* cmd) {
+    std::array<char, 128> buffer;
     std::string result;
-
-    FILE* pipe = popen(command.c_str(), "r");
-
-    if (!pipe)
-        throw std::runtime_error("popen() failed");
-
-    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr)
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
         result += buffer.data();
-
-    int status = pclose(pipe);
-
-    if (status == -1)
-        throw std::runtime_error("pclose() failed");
-
-    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0)
-        throw std::runtime_error("Command failed: " + command);
-
+    }
     return result;
 }
 
@@ -143,16 +136,16 @@ std::string shell_quote(const std::string& value) {
 
 std::unordered_map<std::string, std::unordered_set<std::string>>
 scan_dependencies() {
-    fs::path compdb_file = fs::current_path() / "compile_commands.json";
+    const fs::path compdb_file = fs::current_path() / "compile_commands.json";
 
     if (!fs::is_regular_file(compdb_file))
         throw std::runtime_error(
             "Could not find compilation database: " + compdb_file.string());
 
     // Run clang-scan-deps.
-    std::string command = "clang-scan-deps -compilation-database=" + shell_quote(compdb_file.string());
+    const std::string command = "clang-scan-deps -compilation-database=" + shell_quote(compdb_file.string());
 
-    std::string output = exec(command);
+    const std::string output = exec(command.c_str());
 
     auto dependency_map = parse_makefile(output);
 
