@@ -31,10 +31,7 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-// ------------------------------------------------------------
-// Execute shell command and capture stdout
-// ------------------------------------------------------------
-
+/// Execute shell command and capture stdout
 std::string exec(const std::string& command) {
     std::array<char, 4096> buffer { };
     std::string result;
@@ -58,10 +55,7 @@ std::string exec(const std::string& command) {
     return result;
 }
 
-// ------------------------------------------------------------
-// Parse Makefile dependency output from clang-scan-deps
-// ------------------------------------------------------------
-
+/// Parse Makefile dependency output from clang-scan-deps
 std::unordered_map<std::string, std::unordered_set<std::string>>
 parse_makefile(std::string makefile_content) {
     std::unordered_map<std::string, std::unordered_set<std::string>>
@@ -105,10 +99,7 @@ parse_makefile(std::string makefile_content) {
     return dependency_graph;
 }
 
-// ------------------------------------------------------------
-// Filter out dependencies outside the source root
-// ------------------------------------------------------------
-
+/// Filter out dependencies outside the source root
 std::unordered_set<std::string>
 local_dependencies(
     const std::unordered_set<std::string>& dependencies) {
@@ -136,10 +127,7 @@ local_dependencies(
     return local;
 }
 
-// ------------------------------------------------------------
-// Scan compiler dependencies
-// ------------------------------------------------------------
-
+/// Scan compiler dependencies
 std::string shell_quote(const std::string& value) {
     std::string result = "'";
 
@@ -238,10 +226,7 @@ std::string command_for(
     return command;
 }
 
-// ------------------------------------------------------------
-// Determine whether a command uses a depfile
-// ------------------------------------------------------------
-
+/// Determine whether a command uses a depfile
 bool has_depfile(const std::string& command) {
     std::istringstream stream(command);
     std::string arg;
@@ -257,10 +242,7 @@ bool has_depfile(const std::string& command) {
     return false;
 }
 
-// ------------------------------------------------------------
-// Dependency representation
-// ------------------------------------------------------------
-
+/// Dependency representation
 json dependency_for(
     const std::string& value,
     const std::unordered_set<std::string>& generated_outputs) {
@@ -279,10 +261,7 @@ json dependency_for(
     };
 }
 
-// ------------------------------------------------------------
-// StandardItem
-// ------------------------------------------------------------
-
+/// StandardItem
 json make_standard_item(
     const std::string& output,
     const std::string& command,
@@ -307,10 +286,7 @@ json make_standard_item(
     };
 }
 
-// ------------------------------------------------------------
-// DepItem
-// ------------------------------------------------------------
-
+/// DepItem
 json make_dep_item(
     const std::string& output,
     const std::string& command,
@@ -343,10 +319,7 @@ json make_dep_item(
     };
 }
 
-// ------------------------------------------------------------
-// Construct template items from Ninja graph
-// ------------------------------------------------------------
-
+/// Construct template items from Ninja graph
 void build_items(
     State& state,
     const std::unordered_map<
@@ -432,10 +405,6 @@ void build_items(
         }
     }
 }
-
-// ------------------------------------------------------------
-// Main
-// ------------------------------------------------------------
 
 int main(int argc, char* argv[]) {
     try {
