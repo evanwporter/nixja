@@ -8,7 +8,7 @@
 
 const std::string nixja_template = R"NIXJA(
 {pkgs}: let
-	nixjaGen = builtins.storePath "@nixjaGen@";
+	# nixjaGen = builtins.storePath "@nixjaGen@";
 	{{ target }}_drv =
 		builtins.outputOf
 		(pkgs.stdenvNoCC.mkDerivation
@@ -29,7 +29,7 @@ const std::string nixja_template = R"NIXJA(
 					clang-tools
 					gcc
 					ninja
-				] ++ [ nixjaGen ];
+				]; # ++ [ nixjaGen ];
 
 				# This is necessary so we can invoke `nix-instantiate` below
 				requiredSystemFeatures = ["recursive-nix"];
@@ -57,7 +57,7 @@ const std::string nixja_template = R"NIXJA(
 		pkgs.runCommand "{{ target }}" {
 			__contentAddressed = true;
 		} ''
-			cp ${ {{target}}_drv } "$out"
+			cp -r ${ {{target}}_drv } "$out"
 		'';
 in
 	{{target}}

@@ -3,7 +3,10 @@
 let
     fs = pkgs.lib.fileset;
 
-    mkItem = {name, output, dependencies, command}: pkgs.stdenvNoCC.mkDerivation {
+    # Dependencies are just explicit and implicit declared source files
+    # Nodes should be declared directly in the command
+    # TODO: We also should cover the case when a node is an implicit dependency
+    mkItem = {name, installPhase, dependencies, command}: pkgs.stdenvNoCC.mkDerivation {
         inherit name;
 
         src = fs.toSource {
@@ -23,35 +26,87 @@ let
             ${command}
         '';
 
-        installPhase = ''
-            cp ${output} $out
-        '';
+        inherit installPhase;
     };
 
+    # The dynamically generated derivation for a single edge.
+    # TODO: we need to bring back the dependencies for implicit dependencies, 
+    # they are currently being passed to the jinja file, but they are unused
+    mkDepItem = {name, outputs, command}: builtins.outputOf (pkgs.stdenvNoCC.mkDerivation {
+        # This derivation's only output is the .drv generated at build time.
+        # Nix reserves the .drv suffix for precisely this kind of output.
+        name = "${name}.drv";
+
+        src = ./.;
+
+        buildPhase = let
+            outputs_str = "${builtins.concatStringsSep " " outputs}";
+        in ''
+            ./nixja-scan-deps -i TODO -o ${outputs_str} -- ${command} > derivation.nix
+            cat derivation.nix
+        '';
+
+        installPhase = ''
+            # nix-instantiate prints the generated .drv path. copy its
+            # contents so that $out itself is a valid .drv file.
+            cp "$(
+              nix-instantiate \
+                --extra-experimental-features 'ca-derivations dynamic-derivations' \
+                derivation.nix \
+                --arg pkgs 'import ${pkgs.path} {}'
+            )" "$out"
+        '';
+
+        __contentAddressed = true;
+        outputHashMode = "text";
+        outputHashAlgo = "sha256";
+
+        requiredSystemFeatures = [ "recursive-nix" ];
+
+        nativeBuildInputs = with pkgs; [
+            clang-tools
+            gcc
+            nix
+            ninja
+        ];
+
+        dontFixup = true;
+    }).outPath "out";
+
 {% for item in depItems  %}
-    {{item.attrKey}} = mkItem {
+    {{item.attrKey}} = mkDepItem {
         name = "{{item.attrKey}}";
-        output = "{{item.output}}";
-        dependencies = [
-            {% for dependency in item.dependencies %}
-            {{ dependency.source_path }}
+        outputs = [
+            {% for output in item.outputs %}
+            "{{ output }}"
             {% endfor %}
         ];
         command = "{{ item.command }}";
+        # TODO: Handle dependencies and implicit dependencies
     };
 {% endfor %}
-
 
 {% for item in standardItems  %}
     {{item.attrKey}} = mkItem {
         name = "{{item.attrKey}}";
-        output = "{{item.output}}";
+        {# outputs = [ #}
+        {#     {% for output in item.outputs %} #}
+        {#     "{{ output }}" #}
+        {#     {% endfor %} #}
+        {# ] #}
         dependencies = [
             {% for dependency in item.dependencies %}
-            {{ dependency.source_path }}
+            {{ dependency }}
             {% endfor %}
         ];
         command = "{{ item.command }}";
+        installPhase = ''
+            mkdir -p $out
+            {% for output in item.outputs %}
+            cp {{ output }} $out/{{ output }}
+            {% endfor %}
+        '';
+
     };
 {% endfor %}
 

@@ -2,6 +2,6 @@
 
 #include <string>
 
-const std::string nixja_gen_template = R"(
+const std::string nixja_gen_template = R"NIXJA(
 @NIXJA_GEN_TEMPLATE@
-)";
+)NIXJA";

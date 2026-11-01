@@ -31,156 +31,35 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-/// Execute shell command and capture stdout
-// Source - https://stackoverflow.com/a/478960
-// Posted by waqas, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-10-31, License - CC BY-SA 4.0
-std::string exec(const char* cmd) {
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
-    }
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
-        result += buffer.data();
-    }
-    return result;
-}
-
-/// Parse Makefile dependency output from clang-scan-deps
-/// TODO: Use whatever ninja uses internally
-std::unordered_map<std::string, std::unordered_set<std::string>>
-parse_makefile(std::string makefile_content) {
-    std::unordered_map<std::string, std::unordered_set<std::string>>
-        dependency_graph;
-
-    makefile_content = std::regex_replace(
-        makefile_content,
-        std::regex(R"(\\\r?\n)"),
-        " ");
-
-    std::istringstream file_stream(makefile_content);
-    std::string line;
-
-    while (std::getline(file_stream, line)) {
-        size_t start = line.find_first_not_of(" \t\r");
-
-        if (start == std::string::npos || line[start] == '#')
-            continue;
-
-        size_t colon = line.find(':');
-
-        if (colon == std::string::npos)
-            continue;
-
-        std::string target = line.substr(start, colon - start);
-
-        size_t end = target.find_last_not_of(" \t\r");
-        target.erase(end + 1);
-
-        std::string dependencies = line.substr(colon + 1);
-
-        std::istringstream dep_stream(dependencies);
-        std::string dependency;
-
-        while (dep_stream >> dependency)
-            dependency_graph[target].insert(dependency);
-
-        dependency_graph.try_emplace(target);
-    }
-
-    return dependency_graph;
-}
-
-/// Filter out dependencies outside the source root
-std::unordered_set<std::string>
-local_dependencies(
-    const std::unordered_set<std::string>& dependencies) {
-    fs::path source_root = fs::canonical(fs::current_path());
-
-    std::unordered_set<std::string> local;
-
-    for (const auto& dependency : dependencies) {
-        fs::path path(dependency);
-
-        fs::path resolved = fs::weakly_canonical(
-            path.is_absolute() ? path : source_root / path);
-
-        auto relative = resolved.lexically_relative(source_root);
-
-        if (relative.empty() || relative.is_absolute())
-            continue;
-
-        if (*relative.begin() == "..")
-            continue;
-
-        local.insert(relative.generic_string());
-    }
-
-    return local;
-}
-
-std::string shell_quote(const std::string& value) {
-    std::string result = "'";
-
-    for (char c : value) {
-        if (c == '\'')
-            result += "'\\''";
-        else
-            result += c;
-    }
-
-    return result + "'";
-}
-
-/// Scan compiler dependencies
-/// TODO: This needs to be done in the derivation on a per EDGE basis
-std::unordered_map<std::string, std::unordered_set<std::string>>
-scan_dependencies() {
-    const fs::path compdb_file = fs::current_path() / "compile_commands.json";
-
-    if (!fs::is_regular_file(compdb_file))
-        throw std::runtime_error(
-            "Could not find compilation database: " + compdb_file.string());
-
-    // Run clang-scan-deps.
-    const std::string command = "clang-scan-deps -compilation-database=" + shell_quote(compdb_file.string());
-
-    const std::string output = exec(command.c_str());
-
-    auto dependency_map = parse_makefile(output);
-
-    for (auto& [target, dependencies] : dependency_map)
-        dependencies = local_dependencies(dependencies);
-
-    return dependency_map;
-}
-
+/// TODO: This is not a good way of doing this
 std::string command_for(
     const Edge* edge,
     const std::unordered_set<std::string>& generated_outputs) {
     std::string command = edge->EvaluateCommand();
 
     for (const Node* input : edge->inputs_) {
-        std::string path = input->path();
+        const std::string path = input->path();
 
         if (!generated_outputs.count(path))
             continue;
 
-        std::string attr = path;
+        const Edge* producer = input->in_edge();
+
+        if (!producer || producer->outputs_.empty())
+            continue;
+
+        // Use the producer edge's first output as its Nix attribute name.
+        std::string attr = producer->outputs_[0]->path();
+
+        std::replace(attr.begin(), attr.end(), '/', '_');
         std::replace(attr.begin(), attr.end(), '.', '_');
 
-        // Replace occurrences of the input path with its Nix reference.
+        const std::string nix_reference = "${" + attr + "}/" + path;
+
         size_t pos = 0;
-
         while ((pos = command.find(path, pos)) != std::string::npos) {
-            command.replace(
-                pos,
-                path.size(),
-                "${" + attr + "}");
-
-            pos += attr.size() + 3;
+            command.replace(pos, path.size(), nix_reference);
+            pos += nix_reference.size();
         }
     }
 
@@ -228,7 +107,7 @@ json dependency_for(
 
 /// StandardItem
 json make_standard_item(
-    const std::string& output,
+    const std::vector<std::string>& outputs,
     const std::string& command,
     const std::vector<std::string>& dependencies,
     const std::unordered_set<std::string>& generated_outputs) {
@@ -239,12 +118,14 @@ json make_standard_item(
             dependency_for(dependency, generated_outputs));
     }
 
-    std::string attr = output;
+    // TODO: Check if outputs is empty?
+
+    std::string attr = outputs.front();
 
     std::replace(attr.begin(), attr.end(), '.', '_');
 
     return {
-        { "output", output },
+        { "outputs", outputs },
         { "attrKey", attr },
         { "command", command },
         { "dependencies", deps }
@@ -253,7 +134,7 @@ json make_standard_item(
 
 /// DepItem
 json make_dep_item(
-    const std::string& output,
+    const std::vector<std::string>& outputs,
     const std::string& command,
     const std::vector<std::string>& dependencies,
     const std::vector<std::string>& implicit_dependencies,
@@ -271,12 +152,12 @@ json make_dep_item(
             dependency_for(dependency, generated_outputs));
     }
 
-    std::string attr = output;
-
+    // TODO: Potentially combine with above (the next two lines)
+    std::string attr = outputs.front();
     std::replace(attr.begin(), attr.end(), '.', '_');
 
     return {
-        { "output", output },
+        { "outputs", outputs },
         { "attrKey", attr },
         { "command", command },
         { "dependencies", deps },
@@ -288,9 +169,6 @@ json make_dep_item(
 /// A single item corresponds to a derivation in nix and a build edge in ninja.
 void build_items(
     State& state,
-    const std::unordered_map<
-        std::string,
-        std::unordered_set<std::string>>& dependency_map,
     json& standard_items,
     json& dep_items) {
     // Collect every generated output.
@@ -305,23 +183,16 @@ void build_items(
         if (edge->outputs_.empty())
             continue;
 
-        const std::string output = edge->outputs_[0]->path();
+        std::vector<std::string> outputs;
+
+        for (const auto& output : edge->outputs_) {
+            outputs.push_back(output->path());
+        }
 
         const std::string command = command_for(edge, generated_outputs);
 
         if (has_depfile(command)) {
             std::vector<std::string> dependencies;
-
-            auto it = dependency_map.find(output);
-
-            if (it != dependency_map.end()) {
-                for (const auto& dependency : it->second) {
-                    if (generated_outputs.find(dependency)
-                        == generated_outputs.end()) {
-                        dependencies.push_back(dependency);
-                    }
-                }
-            }
 
             // Identify implicit Ninja inputs.
             std::vector<std::string> implicit_dependencies;
@@ -343,7 +214,7 @@ void build_items(
 
             dep_items.push_back(
                 make_dep_item(
-                    output,
+                    outputs,
                     command,
                     dependencies,
                     implicit_dependencies,
@@ -363,7 +234,7 @@ void build_items(
 
             standard_items.push_back(
                 make_standard_item(
-                    output,
+                    outputs,
                     command,
                     dependencies,
                     generated_outputs));
@@ -394,16 +265,12 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Scan compiler dependencies.
-        auto dependency_map = scan_dependencies();
-
         // Construct template items.
         json standard_items = json::array();
         json dep_items = json::array();
 
         build_items(
             state,
-            dependency_map,
             standard_items,
             dep_items);
 

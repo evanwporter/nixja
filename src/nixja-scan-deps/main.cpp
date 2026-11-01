@@ -195,8 +195,13 @@ int main(int argc, char* argv[]) {
     if (outputs.empty())
         return 0;
 
+    std::string name = outputs.front();
+
+    std::replace(name.begin(), name.end(), '/', '_');
+    std::replace(name.begin(), name.end(), '.', '_');
+
     const json data = {
-        { "name", outputs.front() },
+        { "name", name },
         { "outputs", outputs },
         { "command", command },
         { "dependencies", dependencies }

@@ -95,11 +95,6 @@
 						runHook postInstall
 					'';
 
-					postPatch = ''
-						substituteInPlace src/nixja/nixja.hpp \
-						    --replace-fail "@nixjaGen@" "${final.nixja-gen}"
-					'';
-
 					# postFixup = ''
 					# 	wrapProgram $out/bin/nixja \
 					# 		--prefix PATH : ${final.lib.makeBinPath [

@@ -1,4 +1,4 @@
-pkgs: let
+{ pkgs }: let
 	fs = pkgs.lib.fileset;
 
 	mkItem = {
@@ -6,7 +6,7 @@ pkgs: let
 		dependencies,
 		command,
 	}:
-		pkgs.stdenvNoCC.mkDerivation {
+		pkgs.stdenv.mkDerivation {
 			inherit name;
 
 			src =
@@ -36,11 +36,11 @@ pkgs: let
 		};
 in
 	mkItem {
-		name = {{ name }};
+		name = "{{ name }}";
 		dependencies = [
             {% for dependency in dependencies %}
             ./{{ dependency }}
             {% endfor %}
-        ]
-        command = {{ command }}
+        ];
+        command = "{{ command }}";
 	}
