@@ -143,45 +143,11 @@ std::string shell_quote(const std::string& value) {
 
 std::unordered_map<std::string, std::unordered_set<std::string>>
 scan_dependencies() {
-    // Generate compilation database using Ninja.
-    std::string compdb = exec("ninja -t compdb c_COMPILER");
+    fs::path compdb_file = fs::current_path() / "compile_commands.json";
 
-    // Create temporary directory.
-    std::string temp_template = (fs::temp_directory_path() / "nixja-XXXXXX").string();
-
-    std::vector<char> temp_buffer(
-        temp_template.begin(),
-        temp_template.end());
-
-    temp_buffer.push_back('\0');
-
-    const char* created = mkdtemp(temp_buffer.data());
-
-    if (!created)
-        throw std::runtime_error("Could not create temporary directory");
-
-    fs::path temp_dir(created);
-
-    struct Cleanup {
-        fs::path path;
-
-        ~Cleanup() {
-            std::error_code ec;
-            fs::remove_all(path, ec);
-        }
-    } cleanup { temp_dir };
-
-    fs::path compdb_file = temp_dir / "compile_commands.json";
-
-    {
-        std::ofstream file(compdb_file);
-
-        if (!file)
-            throw std::runtime_error(
-                "Could not create compilation database");
-
-        file << compdb;
-    }
+    if (!fs::is_regular_file(compdb_file))
+        throw std::runtime_error(
+            "Could not find compilation database: " + compdb_file.string());
 
     // Run clang-scan-deps.
     std::string command = "clang-scan-deps -compilation-database=" + shell_quote(compdb_file.string());
