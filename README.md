@@ -38,5 +38,12 @@ Unlike nix-ninja, this is built in C++. There are two reasons for this choice:
 
 (3) I <3 C++.
 
+## Usage
 
+(1) Build it
 
+(2) Navigate to `example/`
+
+(3) Run `./nixja hello`
+
+(4) Profit
