@@ -1,0 +1,7 @@
+#pragma once
+
+#include <string>
+
+const std::string nixja_gen_template = R"(
+@NIXJA_GEN_TEMPLATE@
+)";

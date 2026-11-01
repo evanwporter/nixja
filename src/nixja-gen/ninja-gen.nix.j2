@@ -1,8 +1,3 @@
-#pragma once
-
-#include <string>
-
-const std::string nixja_gen_template = R"(
 # nix-build --show-trace -E 'import ./hello/nixja.nix { pkgs = import <nixpkgs> {}; }'
 {pkgs}: 
 let
@@ -62,4 +57,3 @@ let
 
 in
     {{ target }}
-)";

@@ -25,7 +25,7 @@
 #include "manifest_parser.h"
 #include "state.h"
 
-#include "nixja-gen.j2.hpp"
+#include "nixja-gen.hpp"
 
 namespace fs = std::filesystem;
 
@@ -135,6 +135,7 @@ std::string shell_quote(const std::string& value) {
 }
 
 /// Scan compiler dependencies
+/// TODO: This needs to be done in the derivation on a per EDGE basis
 std::unordered_map<std::string, std::unordered_set<std::string>>
 scan_dependencies() {
     const fs::path compdb_file = fs::current_path() / "compile_commands.json";
@@ -284,6 +285,7 @@ json make_dep_item(
 }
 
 /// Construct template items from Ninja graph
+/// A single item corresponds to a derivation in nix and a build edge in ninja.
 void build_items(
     State& state,
     const std::unordered_map<
@@ -294,19 +296,18 @@ void build_items(
     // Collect every generated output.
     std::unordered_set<std::string> generated_outputs;
 
-    for (const Edge* edge : state.edges_) {
+    for (const Edge* edge : state.edges_)
         for (const Node* output : edge->outputs_)
             generated_outputs.insert(output->path());
-    }
 
     // Process each edge once.
     for (const Edge* edge : state.edges_) {
         if (edge->outputs_.empty())
             continue;
 
-        std::string output = edge->outputs_[0]->path();
+        const std::string output = edge->outputs_[0]->path();
 
-        std::string command = command_for(edge, generated_outputs);
+        const std::string command = command_for(edge, generated_outputs);
 
         if (has_depfile(command)) {
             std::vector<std::string> dependencies;
@@ -352,7 +353,7 @@ void build_items(
             std::vector<std::string> dependencies;
 
             for (const Node* input : edge->inputs_) {
-                std::string path = input->path();
+                const std::string path = input->path();
 
                 if (generated_outputs.find(path)
                     == generated_outputs.end()) {
