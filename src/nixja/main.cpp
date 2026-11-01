@@ -16,6 +16,7 @@
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
+// TODO: This can be made simpler
 void run_command(const std::vector<std::string>& args) {
     std::vector<char*> argv;
 

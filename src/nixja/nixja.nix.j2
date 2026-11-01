@@ -27,9 +27,8 @@
 				requiredSystemFeatures = ["recursive-nix"];
 
 				buildPhase = ''
-					ninja -t compdb c_COMPILER > compile_commands.json
 					./nixja-gen {{ target }} > derivation.nix
-					# cat derivation.nix
+					{# cat derivation.nix #}
 				'';
 
 				installPhase = ''
