@@ -1,0 +1,11 @@
+
+// nix-build \
+//   --extra-experimental-features 'ca-derivations dynamic-derivations' \
+//   --show-trace \
+//   -E 'import ./nixja-full.nix { pkgs = import <nixpkgs> {}; }'
+
+#include <string>
+
+const std::string nixja_template = R"NIXJA(
+@NIXJA_TEMPLATE@
+)NIXJA";
