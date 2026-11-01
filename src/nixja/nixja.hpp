@@ -36,7 +36,7 @@ const std::string nixja_template = R"NIXJA(
 
 				buildPhase = ''
 					ninja -t compdb c_COMPILER > compile_commands.json
-					${nixjaGen}/bin/nixja-gen {{ target }} > derivation.nix
+					./nixja-gen {{ target }} > derivation.nix
 					# cat derivation.nix
 				'';
 
