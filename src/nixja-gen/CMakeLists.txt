@@ -6,6 +6,11 @@ target_link_libraries(nixja-gen PRIVATE
     pantor::inja
 )
 
+target_precompile_headers(nixja-gen PRIVATE
+    <inja/inja.hpp>
+    <nlohmann/json.hpp>
+)
+
 target_include_directories(nixja-gen PRIVATE
     ${CMAKE_SOURCE_DIR}/external/ninja/src
     ${CMAKE_CURRENT_BINARY_DIR}

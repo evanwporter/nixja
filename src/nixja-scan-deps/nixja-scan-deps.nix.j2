@@ -1,0 +1,46 @@
+pkgs: let
+	fs = pkgs.lib.fileset;
+
+	mkItem = {
+		name,
+		dependencies,
+		command,
+	}:
+		pkgs.stdenvNoCC.mkDerivation {
+			inherit name;
+
+			src =
+				fs.toSource {
+					root = ./.;
+
+					# Explicit and Implicit dependencies
+					fileset = fs.unions dependencies;
+				};
+
+			nativeBuildInputs = [pkgs.gcc];
+			dontFixup = true;
+
+			__contentAddressed = true;
+
+			buildPhase = ''
+				echo ${command}
+				${command}
+			'';
+
+			installPhase = ''
+                mkdir -p $out
+                {% for output in outputs %}
+				cp {{ output }} $out/{{ output }}
+                {% endfor %}
+			'';
+		};
+in
+	mkItem {
+		name = {{ name }};
+		dependencies = [
+            {% for dependency in dependencies %}
+            ./{{ dependency }}
+            {% endfor %}
+        ]
+        command = {{ command }}
+	}

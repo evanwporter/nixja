@@ -15,3 +15,5 @@ add_subdirectory(external/ninja)
 add_subdirectory(src/nixja)
 
 add_subdirectory(src/nixja-gen)
+
+add_subdirectory(src/nixja-scan-deps)
