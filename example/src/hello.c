@@ -1,3 +1,3 @@
 #include "hello.h"
 
-const char *hello(void) { return "Hello"; }
+const char* hello(void) { return "Hello"; }
