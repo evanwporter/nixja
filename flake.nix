@@ -28,6 +28,37 @@
 				f (pkgsFor system));
 	in {
 		overlays.default = final: prev: {
+			# C++ dependency scanner
+			nixja-scan-deps =
+				final.stdenv.mkDerivation {
+					name = "nixja-scan-deps";
+
+					src = self;
+
+					nativeBuildInputs = [
+						final.cmake
+						final.pkg-config
+					];
+
+					buildInputs = [
+						final.inja
+						final.nlohmann_json
+						final.nix
+					];
+
+					cmakeBuildType = "Release";
+					cmakeBuildFlags = [
+						"--target"
+						"nixja-scan-deps"
+					];
+
+					installPhase = ''
+						runHook preInstall
+						install -Dm755 src/nixja-scan-deps/nixja-scan-deps "$out/bin/nixja-scan-deps"
+						runHook postInstall
+					'';
+				};
+
 			# C++ generator
 			nixja-gen =
 				final.stdenv.mkDerivation {
@@ -38,11 +69,13 @@
 					nativeBuildInputs = [
 						final.cmake
 						final.makeWrapper
+						final.pkg-config
 					];
 
 					buildInputs = [
 						final.inja
 						final.nlohmann_json
+						final.nix
 					];
 
 					cmakeBuildType = "Release";
@@ -51,19 +84,23 @@
 						"nixja-gen"
 					];
 
+					cmakeFlags = [
+						"-DnixjaScanDeps=${final.nixja-scan-deps}"
+					];
+
 					installPhase = ''
 						runHook preInstall
 						install -Dm755 src/nixja-gen/nixja-gen "$out/bin/nixja-gen"
 						runHook postInstall
 					'';
 
-					# postFixup = ''
-					# 	wrapProgram $out/bin/nixja-gen \
-					# 		--prefix PATH : ${final.lib.makeBinPath [
-					# 			final.ninja
-					# 			final.clang-tools
-					# 		]}
-					# '';
+					postFixup = ''
+						wrapProgram $out/bin/nixja-gen \
+							--prefix PATH : ${final.lib.makeBinPath [
+								final.ninja
+								final.clang-tools
+							]}
+					'';
 				};
 
 			# C++ driver
@@ -76,11 +113,13 @@
 					nativeBuildInputs = [
 						final.cmake
 						final.makeWrapper
+						final.pkg-config
 					];
 
 					buildInputs = [
 						final.inja
 						final.nlohmann_json
+						final.nix
 					];
 
 					cmakeBuildType = "Release";
@@ -89,19 +128,23 @@
 						"nixja"
 					];
 
+					cmakeFlags = [
+						"-DnixjaGen=${final.nixja-gen}"
+					];
+
 					installPhase = ''
 						runHook preInstall
 						install -Dm755 src/nixja/nixja "$out/bin/nixja"
 						runHook postInstall
 					'';
 
-					# postFixup = ''
-					# 	wrapProgram $out/bin/nixja \
-					# 		--prefix PATH : ${final.lib.makeBinPath [
-					# 			final.nix
-					# 			final.nixja-gen
-					# 		]}
-					# '';
+					postFixup = ''
+						wrapProgram $out/bin/nixja \
+							--prefix PATH : ${final.lib.makeBinPath [
+								final.nix
+								final.nixja-gen
+							]}
+					'';
 				};
 		};
 
@@ -112,6 +155,7 @@
 					default = pkgs.nixja;
 					nixja = pkgs.nixja;
 					nixja-gen = pkgs.nixja-gen;
+					nixja-scan-deps = pkgs.nixja-scan-deps;
 				});
 
 		apps =
@@ -129,6 +173,11 @@
 					nixja-gen = {
 						type = "app";
 						program = "${pkgs.nixja-gen}/bin/nixja-gen";
+					};
+
+					nixja-scan-deps = {
+						type = "app";
+						program = "${pkgs.nixja-scan-deps}/bin/nixja-scan-deps";
 					};
 				});
 
