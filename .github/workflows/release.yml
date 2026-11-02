@@ -1,0 +1,112 @@
+# Taken from w/ some edits from ai
+# https://github.com/hudson-trading/slang-server/blob/main/.github/workflows/release.yml
+
+name: Release
+
+on:
+    workflow_dispatch:
+        inputs:
+            kind:
+                description: Update kind (major, minor, patch). Ignored when existing_tag is set.
+                required: false
+                type: choice
+                options:
+                    - patch
+                    - minor
+                    - major
+                default: patch
+            existing_tag:
+                description: Amend an existing release tag (for example, v0.2.6). Skips version bump and release creation.
+                required: false
+                type: string
+                default: ""
+            dry_run:
+                description: Prepare the version update without publishing or pushing changes.
+                required: false
+                type: boolean
+                default: false
+
+permissions:
+    contents: write
+
+jobs:
+    create-release:
+        if: inputs.existing_tag == ''
+        runs-on: ubuntu-latest
+        outputs:
+            tag_name: ${{ steps.create_tag.outputs.tag_name }}
+            version: ${{ steps.bump_version.outputs.version }}
+        steps:
+            - name: Checkout release source
+              uses: actions/checkout@v6
+              with:
+                  ref: ${{ inputs.dry_run && github.ref || 'master' }}
+                  fetch-depth: 0
+                  token: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Bump version
+              id: bump_version
+              shell: bash
+              run: |
+                  CURRENT_VERSION=$(<VERSION)
+                  echo "Current version: $CURRENT_VERSION"
+                  IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+                  case "${{ inputs.kind }}" in
+                    major)
+                      MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+                    minor)
+                      MINOR=$((MINOR + 1)); PATCH=0 ;;
+                    patch)
+                      PATCH=$((PATCH + 1)) ;;
+                  esac
+
+                  VERSION="$MAJOR.$MINOR.$PATCH"
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+                  echo "New version: $VERSION"
+
+            - name: Update version metadata
+              shell: bash
+              run: |
+                  VERSION="${{ steps.bump_version.outputs.version }}"
+                  printf '%s\n' "$VERSION" > VERSION
+                  sed -i -E "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$VERSION\"/" python/pyproject.toml
+
+            - name: Commit version update
+              if: inputs.dry_run == false
+              shell: bash
+              run: |
+                  VERSION="${{ steps.bump_version.outputs.version }}"
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  git add VERSION python/pyproject.toml
+                  git commit -m "Update VERSION to $VERSION"
+                  git push origin master
+
+            - name: Create and push tag
+              id: create_tag
+              if: inputs.dry_run == false
+              shell: bash
+              run: |
+                  TAG_NAME="v${{ steps.bump_version.outputs.version }}"
+                  git tag "$TAG_NAME"
+                  git push origin "$TAG_NAME"
+                  echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+            - name: Create GitHub release
+              if: inputs.dry_run == false
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  gh release create "${{ steps.create_tag.outputs.tag_name }}" \
+                    --title "${{ steps.create_tag.outputs.tag_name }}" \
+                    --generate-notes
+
+    amend-release:
+        if: inputs.existing_tag != '' && inputs.dry_run == false
+        runs-on: ubuntu-latest
+        steps:
+            - name: Verify existing release
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: gh release view "${{ inputs.existing_tag }}"
