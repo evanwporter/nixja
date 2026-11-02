@@ -1,5 +1,7 @@
 add_executable(nixja-gen ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
 
+target_compile_options(nixja-gen PRIVATE -Uunix)
+
 target_link_libraries(nixja-gen PRIVATE
     libninja
     libninja-re2c

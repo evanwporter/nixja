@@ -134,8 +134,8 @@
 
 		devShells =
 			forAllSystems (pkgs: let
-				llvmPkgs = pkgs.llvmPackages_22;
-			in {
+					llvmPkgs = pkgs.llvmPackages_22;
+				in {
 					default =
 						(pkgs.mkShell.override {
 								stdenv = llvmPkgs.stdenv;
@@ -147,9 +147,11 @@
 								ninja
 								inja
 								nlohmann_json
+								pkg-config
 
 								# Nix
 								nix
+								boost # https://github.com/NixOS/nix/issues/13782
 
 								# Python development
 								python313
