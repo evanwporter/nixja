@@ -14,8 +14,6 @@
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
 
-#include <nix/store/store-api.hh>
-
 #include "disk_interface.h"
 #include "graph.h"
 #include "manifest_parser.h"
