@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <inja/environment.hpp>
 #include <iostream>
 #include <regex>
 #include <sstream>
@@ -14,16 +15,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <nix/main/shared.hh>
-#include <nix/store/derivations.hh>
-#include <nix/store/globals.hh>
-#include <nix/store/store-api.hh>
-#include <nix/store/store-dir-config.hh>
-#include <nix/store/store-open.hh>
-#include <nix/util/posix-source-accessor.hh>
-
-#include <fmt/format.h>
+#include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
+
+#include "nixja-scan-deps.hpp"
 
 namespace fs = std::filesystem;
 
@@ -194,6 +189,9 @@ int main(int argc, char* argv[]) {
 
     const auto dependencies = scan_dependencies(command);
 
+    // Render embedded template.
+    inja::Environment env;
+
     /// TODO: Maybe give a error or something here?
     if (outputs.empty())
         return 0;
@@ -203,123 +201,14 @@ int main(int argc, char* argv[]) {
     std::replace(name.begin(), name.end(), '/', '_');
     std::replace(name.begin(), name.end(), '.', '_');
 
-    const fs::path project_root = fs::current_path();
-    nix::experimentalFeatureSettings.experimentalFeatures.set(
-        "ca-derivations dynamic-derivations");
-
-    nix::initLibStore(true);
-    const nix::ref<nix::Store> store = nix::openStore();
-    std::unordered_map<std::string, std::string> store_paths;
-
-    for (const auto& dependency : dependencies) {
-        const fs::path file = fs::weakly_canonical(dependency);
-
-        const auto stored = store->addToStore(
-            file.filename().string(),
-            nix::PosixSourceAccessor::createAtRoot(file),
-            nix::ContentAddressMethod::Raw::Flat);
-
-        store_paths.emplace(
-            dependency,
-            store->printStorePath(stored));
-
-        std::cerr << dependency << " -> "
-                  << store->printStorePath(stored) << '\n';
-    }
-
-    // TODO: Use the toolchain file
-    //
-    // std::ifstream toolchain_file("toolchain.json");
-    //
-    // if (!toolchain_file.is_open())
-    //     return 1;
-    //
-    // const auto toolchain = json::parse(toolchain_file);
-
-    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
-    for (const auto [dep, store_path] : store_paths) {
-        const fs::path parent = fs::path(dep).parent_path();
-        if (!parent.empty())
-            linkPhase += fmt::format(
-                "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
-        linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
-    };
-
-    std::string installPhase = "mkdir -p $out; ";
-    for (const auto output : outputs) {
-        installPhase += fmt::format(
-            "cp {} $out/{}; ", output, fs::path(output).filename().string());
-    }
-
-    const char* bashBuilder = std::getenv("NIXJA_BASH");
-    if (bashBuilder == nullptr) {
-        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder";
-        return 1;
-    }
-
-    const char* buildPath = std::getenv("NIXJA_PATH");
-    if (buildPath == nullptr) {
-        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH";
-        return 1;
-    }
-
-    std::vector<std::string> inputSrcs;
-    inputSrcs.reserve(store_paths.size() + 1);
-    for (const auto& [dependency, storePath] : store_paths)
-        inputSrcs.push_back(fs::path(storePath).filename().string());
-    inputSrcs.push_back(
-        fs::path(bashBuilder).parent_path().parent_path().filename().string());
-
-    const json inputDrvs = {
-        { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
-          {
-              { "dynamicOutputs", json::object() },
-              { "outputs", json::array({ "out" }) },
-          } },
-        { "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
-          {
-              { "dynamicOutputs", json::object() },
-              { "outputs", json::array({ "out" }) },
-          } },
-    };
-
-    const json inputsJson = {
-        { "srcs", inputSrcs },
-        // TODO: Replace with values from the toolchain file.
-        { "drvs", inputDrvs },
-    };
-
-    const json derivationEnv = {
-        { "name", "src_main_o" },
-        { "PATH", buildPath },
-        { "linkPhase", linkPhase },
-        // BUG: Ensure every parent directory of an output is created in buildPhase.
-        { "buildPhase", command },
-        { "installPhase", installPhase },
-        { "outputs", "out" },
-        { "out", nix::hashPlaceholder("out") },
-    };
-
-    const json outputsJson = {
-        { "out", {
-                     { "method", "nar" },
-                     { "hashAlgo", "sha256" },
-                 } },
-    };
-
-    const json drv = {
+    const json data = {
         { "name", name },
-        { "system", "x86_64-linux" },
-        { "builder", bashBuilder },
-        { "version", 4u },
-        { "args", json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }) },
-        { "env", derivationEnv },
-        { "inputs", inputsJson },
-        { "outputs", outputsJson },
+        { "outputs", outputs },
+        { "command", command },
+        { "dependencies", dependencies }
     };
 
-    const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
-    const auto path = store->writeDerivation(derivation);
+    const std::string rendered = env.render(nixja_scan_deps_template, data);
 
-    std::cout << "/nix/store/" << path.to_string() << std::endl;
+    std::cout << rendered;
 }
