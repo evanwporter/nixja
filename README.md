@@ -49,3 +49,15 @@ Unlike nix-ninja, this is built in C++. There are two reasons for this choice:
 (3) Run `./nixja hello`
 
 (4) Profit
+
+# Release 
+
+Add tests
+
+## 0.2.0
+
+This release will generate drv files directly and add them to the store with nix store add
+
+## 0.3.0
+
+This release will replace nix store add and interface with the C++ nix api directly.
