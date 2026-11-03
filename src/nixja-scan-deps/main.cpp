@@ -209,17 +209,6 @@ int main(int argc, char* argv[]) {
     std::replace(name.begin(), name.end(), '/', '_');
     std::replace(name.begin(), name.end(), '.', '_');
 
-    // const json data = {
-    //     { "name", name },
-    //     { "outputs", outputs },
-    //     { "command", command },
-    //     { "dependencies", dependencies }
-    // };
-
-    // const std::string rendered = env.render(nixja_scan_deps_template, data);
-
-    // std::cout << rendered;
-
     const fs::path project_root = fs::current_path();
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");

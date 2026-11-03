@@ -1,7 +1,0 @@
-#pragma once
-
-#include <string>
-
-const std::string nixja_scan_deps_template = R"NIXJA(
-@NIXJA_SCAN_DEPS_TEMPLATE@
-)NIXJA";
