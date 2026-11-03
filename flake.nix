@@ -158,6 +158,8 @@
 					nixja-scan-deps = pkgs.nixja-scan-deps;
 				});
 
+		nixjaToolchain = forAllSystems (pkgs: import ./example pkgs);
+
 		apps =
 			forAllSystems (pkgs: {
 					default = {
