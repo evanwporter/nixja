@@ -14,7 +14,12 @@
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
 
+#include <nix/main/shared.hh>
+#include <nix/store/derivations.hh>
+#include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
+#include <nix/store/store-dir-config.hh>
+#include <nix/store/store-open.hh>
 
 #include "disk_interface.h"
 #include "graph.h"
@@ -26,6 +31,25 @@
 namespace fs = std::filesystem;
 
 using json = nlohmann::json;
+
+// TODO: move to common file
+//
+/// Execute shell command and capture stdout
+// Source - https://stackoverflow.com/a/478960
+// Posted by waqas, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-10-31, License - CC BY-SA 4.0
+std::string exec(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    return result;
+}
 
 /// TODO: This is not a good way of doing this
 std::string command_for(

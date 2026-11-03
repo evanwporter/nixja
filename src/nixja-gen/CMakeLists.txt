@@ -6,6 +6,7 @@ target_link_libraries(nixja-gen PRIVATE
     libninja
     libninja-re2c
     pantor::inja
+    PkgConfig::NIX_STORE
 )
 
 target_precompile_headers(nixja-gen PRIVATE

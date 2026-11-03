@@ -2,6 +2,7 @@ add_executable(nixja-scan-deps ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
 
 target_link_libraries(nixja-scan-deps PRIVATE
     pantor::inja
+    PkgConfig::NIX_STORE
 )
 
 target_precompile_headers(nixja-scan-deps PRIVATE
@@ -22,3 +23,6 @@ configure_file(
     "${CMAKE_CURRENT_BINARY_DIR}/nixja-scan-deps.hpp"
     @ONLY
 )
+
+target_link_libraries(nixja-scan-deps PRIVATE
+    fmt::fmt)
