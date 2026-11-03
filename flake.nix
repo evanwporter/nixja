@@ -197,6 +197,7 @@
 								inja
 								nlohmann_json
 								pkg-config
+								fmt
 								ccache
 
 								# Nix
