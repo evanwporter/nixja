@@ -23,10 +23,7 @@
 #include <nix/util/posix-source-accessor.hh>
 
 #include <fmt/format.h>
-// #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
-
-#include "nixja-scan-deps.hpp"
 
 namespace fs = std::filesystem;
 
@@ -197,9 +194,6 @@ int main(int argc, char* argv[]) {
 
     const auto dependencies = scan_dependencies(command);
 
-    // // Render embedded template.
-    // inja::Environment env;
-
     /// TODO: Maybe give a error or something here?
     if (outputs.empty())
         return 0;
@@ -258,11 +252,16 @@ int main(int argc, char* argv[]) {
     }
 
     const char* bashBuilder = std::getenv("NIXJA_BASH");
-    if (bashBuilder == nullptr)
-        throw std::runtime_error("NIXJA_BASH is not set; cannot determine derivation builder");
+    if (bashBuilder == nullptr) {
+        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder";
+        return 1;
+    }
+
     const char* buildPath = std::getenv("NIXJA_PATH");
-    if (buildPath == nullptr)
-        throw std::runtime_error("NIXJA_PATH is not set; cannot determine build PATH");
+    if (buildPath == nullptr) {
+        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH";
+        return 1;
+    }
 
     std::vector<std::string> inputSrcs;
     inputSrcs.reserve(store_paths.size() + 1);
