@@ -55,19 +55,16 @@
 				buildPhase = let
 					outputs_str = "${builtins.concatStringsSep " " outputs}";
 				in ''
-					./nixja-scan-deps -i TODO -o ${outputs_str} -- ${command} > derivation.nix
-
+					export NIXJA_BASH="${pkgs.bash}/bin/bash"
+					export NIXJA_PATH="${pkgs.coreutils}/bin:${pkgs.gcc}/bin"
+					NIXJA_SCAN_DEP_DRV="$(./nixja-scan-deps -i TODO -o ${outputs_str} -- ${command})"
+					echo $NIXJA_SCAN_DEP_DRV
 				'';
 
 				installPhase = ''
 					# nix-instantiate prints the generated .drv path. copy its
 					# contents so that $out itself is a valid .drv file.
-					cp "$(
-					  nix-instantiate \
-					    --extra-experimental-features 'ca-derivations dynamic-derivations' \
-					    derivation.nix \
-					    --arg pkgs 'import ${pkgs.path} {}'
-					)" "$out"
+					cp "$NIXJA_SCAN_DEP_DRV" "$out"
 				'';
 
 				__contentAddressed = true;

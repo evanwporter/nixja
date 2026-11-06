@@ -28,6 +28,8 @@
 
 				buildPhase = ''
 					./nixja-gen {{ target }} > derivation.nix
+					echo "[NIXJA]"
+					cat derivation.nix
 					{# cat derivation.nix #}
 				'';
 
