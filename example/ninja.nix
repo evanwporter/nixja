@@ -29,7 +29,8 @@
 
 				buildPhase = ''
 					./nixja-gen hello > derivation.nix
-                    echo "[NIXJA] && cat derivation.nix
+					echo "[NIXJA]"
+					cat derivation.nix
 					
 				'';
 
