@@ -26,6 +26,8 @@ The major downside, and why its not good for local builds is that every run we n
 
 7. Optimize, optimize, optimize
 
+8. Another goal of this project is to be minimal. Ideally we offload as much stuff to the NIX C++ API and libninja as possible.
+
 ## Rationale
 
 I've never used nix-ninja, but I assume its excellent. I did use the design docs from nix-ninja when designing this.
