@@ -1,10 +1,13 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <expected>
 #include <filesystem>
+#include <fmt/format.h>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -13,6 +16,14 @@
 
 #include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
+
+#include <nix/main/shared.hh>
+#include <nix/store/derivations.hh>
+#include <nix/store/globals.hh>
+#include <nix/store/store-api.hh>
+#include <nix/store/store-dir-config.hh>
+#include <nix/store/store-open.hh>
+#include <nix/util/posix-source-accessor.hh>
 
 #include "disk_interface.h"
 #include "graph.h"
@@ -25,30 +36,22 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-/// TODO: This is not a good way of doing this
+template <typename T, typename E = std::string>
+using Result = std::expected<T, E>;
+
 std::string command_for(
     const Edge* edge,
-    const std::unordered_set<std::string>& generated_outputs) {
+    const std::unordered_map<const Node*, std::string>& node_map) {
     std::string command = edge->EvaluateCommand();
 
     for (const Node* input : edge->inputs_) {
         const std::string path = input->path();
 
-        if (!generated_outputs.count(path))
+        const auto node = node_map.find(input);
+        if (node == node_map.end())
             continue;
 
-        const Edge* producer = input->in_edge();
-
-        if (!producer || producer->outputs_.empty())
-            continue;
-
-        // Use the producer edge's first output as its Nix attribute name.
-        std::string attr = producer->outputs_[0]->path();
-
-        std::replace(attr.begin(), attr.end(), '/', '_');
-        std::replace(attr.begin(), attr.end(), '.', '_');
-
-        const std::string nix_reference = "${" + attr + "}/" + path;
+        const std::string& nix_reference = node->second;
 
         size_t pos = 0;
         while ((pos = command.find(path, pos)) != std::string::npos) {
@@ -167,10 +170,21 @@ void build_items(
     json& dep_items) {
     // Collect every generated output.
     std::unordered_set<std::string> generated_outputs;
+    std::unordered_map<const Node*, std::string> node_map;
 
-    for (const Edge* edge : state.edges_)
-        for (const Node* output : edge->outputs_)
+    for (const Edge* edge : state.edges_) {
+        if (edge->outputs_.empty())
+            continue;
+
+        std::string attr = edge->outputs_.front()->path();
+        std::replace(attr.begin(), attr.end(), '/', '_');
+        std::replace(attr.begin(), attr.end(), '.', '_');
+
+        for (const Node* output : edge->outputs_) {
             generated_outputs.insert(output->path());
+            node_map.emplace(output, "${" + attr + "}/" + output->path());
+        }
+    }
 
     // Process each edge once.
     for (const Edge* edge : state.edges_) {
@@ -183,7 +197,7 @@ void build_items(
             outputs.push_back(output->path());
         }
 
-        const std::string command = command_for(edge, generated_outputs);
+        const std::string command = command_for(edge, node_map);
 
         if (has_depfile(command)) {
             std::vector<std::string> dependencies;
@@ -232,6 +246,149 @@ void build_items(
                     command,
                     dependencies,
                     generated_outputs));
+        }
+    }
+}
+
+/// Process a single edge
+/// `node_map` is the map of each Node to the Node's corresponding output derivation
+///     Multiple nodes can have the same output derivation
+Result<void> process_edge(const Edge* edge, std::unordered_map<const Node*, std::string>& node_map) {
+    // processing a edge means creating a drv file for it
+
+    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
+    // for (const auto [dep, store_path] : store_paths) {
+    //     const fs::path parent = fs::path(dep).parent_path();
+    //     if (!parent.empty())
+    //         linkPhase += fmt::format(
+    //             "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
+    //     linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
+    // };
+
+    const auto outputs = edge->outputs_;
+
+    const auto nodes = edge->outputs_;
+
+    /// Name of the Output
+    auto name = fs::path(nodes.front()->path()).filename().string();
+    std::replace(name.begin(), name.end(), '.', '_');
+
+    const std::string command = command_for(edge, node_map);
+
+    std::string installPhase = "mkdir -p $out; ";
+    for (const auto output : outputs) {
+        installPhase += fmt::format(
+            "cp {} $out/{}; ", output->path(), fs::path(output->path()).filename().string());
+    }
+
+    const char* bashBuilder = std::getenv("NIXJA_BASH");
+    if (bashBuilder == nullptr) {
+        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder";
+        return std::unexpected("");
+    }
+
+    const char* buildPath = std::getenv("NIXJA_PATH");
+    if (buildPath == nullptr) {
+        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH";
+        return std::unexpected("");
+    }
+
+    std::vector<std::string> inputSrcs;
+    // inputSrcs.reserve(store_paths.size() + 1);
+    // for (const auto& [dependency, storePath] : store_paths)
+    //     inputSrcs.push_back(fs::path(storePath).filename().string());
+    // inputSrcs.push_back(
+    //     fs::path(bashBuilder).parent_path().parent_path().filename().string());
+
+    const json inputDrvs = {
+        { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
+          {
+              { "dynamicOutputs", json::object() },
+              { "outputs", json::array({ "out" }) },
+          } },
+        { "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
+          {
+              { "dynamicOutputs", json::object() },
+              { "outputs", json::array({ "out" }) },
+          } },
+    };
+
+    const json inputsJson = {
+        { "srcs", inputSrcs },
+        // TODO: Replace with values from the toolchain file.
+        { "drvs", inputDrvs },
+    };
+
+    const json derivationEnv = {
+        { "name", "src_main_o" },
+        { "PATH", buildPath },
+        { "linkPhase", linkPhase },
+        // BUG: Ensure every parent directory of an output is created in buildPhase.
+        { "buildPhase", command },
+        { "installPhase", installPhase },
+        { "outputs", "out" },
+        { "out", nix::hashPlaceholder("out") },
+    };
+
+    const json outputsJson = {
+        { "out", {
+                     { "method", "nar" },
+                     { "hashAlgo", "sha256" },
+                 } },
+    };
+
+    const json drv = {
+        { "name", name },
+        { "system", "x86_64-linux" },
+        { "builder", bashBuilder },
+        { "version", 4u },
+        { "args", json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }) },
+        { "env", derivationEnv },
+        { "inputs", inputsJson },
+        { "outputs", outputsJson },
+    };
+};
+
+/// Kahns Algorithm
+/// See LC Course Scheduling
+void topo_process(const State& state) {
+    // TODO: Use vector instead of unordered_map
+
+    /// The number of unprocessed dependencies for a give edge
+    std::unordered_map<const Edge*, size_t> indegree;
+
+    /// Adjaceny list
+    /// Maps each edge to all the edges that depend on it (waiting on this edge to be processed)
+    std::unordered_map<const Edge*, std::vector<const Edge*>> consumers;
+
+    /// Ready Queue
+    /// A edge in this queue means that all of its dependencies have been processed
+    std::queue<const Edge*> queue;
+
+    // Form the adjaceny list
+    for (const auto edge : state.edges_) {
+        std::unordered_set<const Edge*> producers;
+
+        for (const auto node : edge->inputs_) {
+            /// producer -> consumer
+            /// producer outputs a node that consumer needs
+            const auto producer = node->in_edge();
+
+            // A nullptr means the node doesn't have a dependency
+            if (producer)
+                producers.insert(producer);
+        }
+
+        indegree[edge] = producers.size();
+
+        for (const Edge* producer : producers) {
+            consumers[producer].push_back(edge);
+        }
+    }
+
+    for (const auto* edge : state.edges_) {
+        if (indegree[edge] == 0) {
+            queue.push(edge);
         }
     }
 }

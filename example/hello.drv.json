@@ -1,0 +1,104 @@
+{
+    "derivations": {
+        "1z20zy2qk6pzjg9kw0v33hnwy7ddcjj9-hello.drv": {
+            "args": [
+                "-e",
+                "/nix/store/l622p70vy8k5sh7y5wizi5f2mic6ynpg-source-stdenv.sh",
+                "/nix/store/shkw4qm9qcw5sc5n1k5jznc83ny02r39-default-builder.sh"
+            ],
+            "builder": "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash",
+            "env": {
+                "__structuredAttrs": "",
+                "buildInputs": "",
+                "buildPhase": "echo cc /1jvnb938b6y82kvgsms0803d01j2qpkqx1gdn9jzfrn36i6p8l6v/main.o /11nsp3zf2vwmb87xml9054gyxk0m28k2hnblmqr4yijdzkp15ndd/hello.o /1s3l4bxdillx1z6npxm9xq31i3kbi90bf56s3brsvy3vb12yz5p2/world.o -o hello\ncc /1jvnb938b6y82kvgsms0803d01j2qpkqx1gdn9jzfrn36i6p8l6v/main.o /11nsp3zf2vwmb87xml9054gyxk0m28k2hnblmqr4yijdzkp15ndd/hello.o /1s3l4bxdillx1z6npxm9xq31i3kbi90bf56s3brsvy3vb12yz5p2/world.o -o hello\n",
+                "builder": "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash",
+                "cmakeFlags": "",
+                "configureFlags": "",
+                "depsBuildBuild": "",
+                "depsBuildBuildPropagated": "",
+                "depsBuildTarget": "",
+                "depsBuildTargetPropagated": "",
+                "depsHostHost": "",
+                "depsHostHostPropagated": "",
+                "depsTargetTarget": "",
+                "depsTargetTargetPropagated": "",
+                "doCheck": "",
+                "doInstallCheck": "",
+                "dontFixup": "1",
+                "installPhase": "mkdir -p $out\n\ncp hello $out/hello\n\n",
+                "mesonFlags": "",
+                "name": "hello",
+                "nativeBuildInputs": "/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0",
+                "out": "/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9",
+                "outputHashAlgo": "sha256",
+                "outputHashMode": "recursive",
+                "outputs": "out",
+                "patches": "",
+                "propagatedBuildInputs": "",
+                "propagatedNativeBuildInputs": "",
+                "src": "/nix/store/0ccnxa25whszw7mgbgyzdm4nqc0zwnm8-source",
+                "stdenv": "/nix/store/c3k15jk20fccs90qgffdwzhxy15b5fdj-stdenv-linux-no-cc",
+                "strictDeps": "",
+                "system": "x86_64-linux"
+            },
+            "inputs": {
+                "drvs": {
+                    "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv": {
+                        "dynamicOutputs": {},
+                        "outputs": ["out"]
+                    },
+                    "gmk0z89rxb6s69cg7lm4gm8zq3w6awg5-hello_o.drv.drv": {
+                        "dynamicOutputs": {
+                            "out": {
+                                "dynamicOutputs": {},
+                                "outputs": ["out"]
+                            }
+                        },
+                        "outputs": []
+                    },
+                    "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv": {
+                        "dynamicOutputs": {},
+                        "outputs": ["out"]
+                    },
+                    "jrjq3n2gpgq6sn07iiymh8ivf19ahncm-stdenv-linux-no-cc.drv": {
+                        "dynamicOutputs": {},
+                        "outputs": ["out"]
+                    },
+                    "xg9iwi3d0qqa4v2x8hwh7v0wqqysr47s-main_o.drv.drv": {
+                        "dynamicOutputs": {
+                            "out": {
+                                "dynamicOutputs": {},
+                                "outputs": ["out"]
+                            }
+                        },
+                        "outputs": []
+                    },
+                    "ymdmnwgxj0i7q7srpm1gq5x4yxh8mbdl-world_o.drv.drv": {
+                        "dynamicOutputs": {
+                            "out": {
+                                "dynamicOutputs": {},
+                                "outputs": ["out"]
+                            }
+                        },
+                        "outputs": []
+                    }
+                },
+                "srcs": [
+                    "0ccnxa25whszw7mgbgyzdm4nqc0zwnm8-source",
+                    "l622p70vy8k5sh7y5wizi5f2mic6ynpg-source-stdenv.sh",
+                    "shkw4qm9qcw5sc5n1k5jznc83ny02r39-default-builder.sh"
+                ]
+            },
+            "name": "hello",
+            "outputs": {
+                "out": {
+                    "hashAlgo": "sha256",
+                    "method": "nar"
+                }
+            },
+            "system": "x86_64-linux",
+            "version": 4
+        }
+    },
+    "version": 4
+}
