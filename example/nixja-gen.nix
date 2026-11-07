@@ -34,9 +34,7 @@ let
     # The dynamically generated derivation for a single edge.
     # TODO: we need to bring back the dependencies for implicit dependencies, 
     # they are currently being passed to the jinja file, but they are unused
-    mkDepItem = {name, outputs, command}:
-    let
-        drv = pkgs.stdenvNoCC.mkDerivation {
+    mkDepItem = {name, outputs, command}: builtins.outputOf (pkgs.stdenvNoCC.mkDerivation {
         # This derivation's only output is the .drv generated at build time.
         # Nix reserves the .drv suffix for precisely this kind of output.
         name = "${name}.drv";
@@ -73,10 +71,7 @@ let
         ];
 
         dontFixup = true;
-        };
-    in
-        builtins.trace "nixja scan wrapper: ${drv.drvPath}"
-            (builtins.outputOf drv.drvPath "out");
+    }).outPath "out";
 
 
     main_o = mkDepItem {

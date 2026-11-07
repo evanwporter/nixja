@@ -272,6 +272,13 @@ Result<void> process_dep_edge(const Edge* edge, std::unordered_map<const Node*, 
 
     const std::string command = command_for(edge, node_map);
 
+    /// String passed to `nixja-scan-deps -o`
+    std::string outputs_str;
+    for (const auto& output : edge->outputs_)
+        outputs_str += output->path();
+
+    const std::string nixja_scan_deps = fmt::format("./nixja-scan-deps -i TODO -o {} -- {}", outputs_str, command);
+
     std::string installPhase = "mkdir -p $out; ";
     for (const auto output : outputs) {
         installPhase += fmt::format(
@@ -300,7 +307,7 @@ Result<void> process_dep_edge(const Edge* edge, std::unordered_map<const Node*, 
     )NIXJA",
                                          bashBuilder,
                                          buildPath,
-                                         command);
+                                         nixja_scan_deps);
 
     std::vector<std::string> inputSrcs;
     // inputSrcs.reserve(store_paths.size() + 1);
@@ -571,6 +578,11 @@ void topo_process(const State& state) {
             const auto result = process_standard_edge(edge, node_map);
             if (!result.has_value())
                 // TODO: Don't return but handle it better
+                return;
+
+        } else {
+            const auto result = process_dep_edge(edge, node_map);
+            if (!result.has_value())
                 return;
         }
 
