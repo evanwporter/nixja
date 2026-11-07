@@ -598,12 +598,30 @@ void topo_process(const State& state, const nix::ref<nix::Store> store) {
 
     /// TODO: Move this out of this function
 
-    const fs::path source_dir = fs::canonical(fs::current_path());
+    // const fs::path source_dir = fs::canonical(fs::current_path());
+    //
+    // const auto stored = store->addToStore(
+    //     source_dir.filename().string(), // "nixja", not "."
+    //     nix::PosixSourceAccessor::createAtRoot(source_dir),
+    //     nix::ContentAddressMethod::Raw::NixArchive);
+    //
+    // const std::string source_store_path = store->printStorePath(stored);
 
+    // TODO: This filtering mechanism needs to be removed. Its only here so i don't keep
+    // adding the slightly changes directories to the nix store
+    const fs::path project_root = fs::canonical(fs::current_path());
+    nix::PathFilter only_src = [project_root](const std::string& path) {
+        const fs::path relative = fs::path(path).lexically_relative(project_root);
+        const std::string rel = relative.generic_string();
+        return rel == "." || rel == "src" || rel.starts_with("src/");
+    };
     const auto stored = store->addToStore(
-        source_dir.filename().string(), // "nixja", not "."
-        nix::PosixSourceAccessor::createAtRoot(source_dir),
-        nix::ContentAddressMethod::Raw::NixArchive);
+        "source",
+        nix::PosixSourceAccessor::createAtRoot(project_root),
+        nix::ContentAddressMethod::Raw::NixArchive,
+        nix::HashAlgorithm::SHA256,
+        { },
+        only_src);
 
     const std::string source_store_path = store->printStorePath(stored);
 
