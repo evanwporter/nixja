@@ -743,6 +743,8 @@ int main(int argc, char* argv[]) {
 
         std::cout << env.render(nixja_gen_template, data);
 
+        nix::experimentalFeatureSettings.experimentalFeatures.set(
+            "ca-derivations dynamic-derivations");
         nix::initLibStore(true);
         const nix::ref<nix::Store> store = nix::openStore();
 
