@@ -87,17 +87,21 @@ std::string exec(const char* cmd) {
 
 std::string command_for(
     const Edge* edge,
-    const std::unordered_map<const Node*, Derivation>& node_map) {
+    const std::unordered_map<const Edge*, Derivation>& edge_map) {
     std::string command = edge->EvaluateCommand();
 
     for (const Node* input : edge->inputs_) {
         const std::string path = input->path();
 
-        const auto node = node_map.find(input);
-        if (node == node_map.end())
+        const Edge* producer = input->in_edge();
+        if (producer == nullptr)
             continue;
 
-        const std::string& nix_reference = node->second.output_path;
+        const auto derivation = edge_map.find(producer);
+        if (derivation == edge_map.end())
+            continue;
+
+        const std::string nix_reference = derivation->second.output_path + "/" + path;
 
         size_t pos = 0;
         while ((pos = command.find(path, pos)) != std::string::npos) {
@@ -216,7 +220,7 @@ void build_items(
     json& dep_items) {
     // Collect every generated output.
     std::unordered_set<std::string> generated_outputs;
-    std::unordered_map<const Node*, Derivation> node_map;
+    std::unordered_map<const Edge*, Derivation> edge_map;
 
     for (const Edge* edge : state.edges_) {
         if (edge->outputs_.empty())
@@ -226,11 +230,12 @@ void build_items(
         std::replace(attr.begin(), attr.end(), '/', '_');
         std::replace(attr.begin(), attr.end(), '.', '_');
 
+        edge_map[edge] = Derivation {
+            .output_path = "${" + attr + "}"
+        };
+
         for (const Node* output : edge->outputs_) {
             generated_outputs.insert(output->path());
-            node_map[output] = Derivation {
-                .output_path = "${" + attr + "}/" + output->path()
-            };
         }
     }
 
@@ -245,7 +250,7 @@ void build_items(
             outputs.push_back(output->path());
         }
 
-        const std::string command = command_for(edge, node_map);
+        const std::string command = command_for(edge, edge_map);
 
         if (has_depfile(command)) {
             std::vector<std::string> dependencies;
@@ -302,7 +307,7 @@ Result<void> process_dep_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
-    std::unordered_map<const Node*, Derivation>& node_map) {
+    std::unordered_map<const Edge*, Derivation>& edge_map) {
     // processing a edge means creating a drv file for it
 
     std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
@@ -326,7 +331,7 @@ Result<void> process_dep_edge(
     auto name = fs::path(nodes.front()->path()).filename().string();
     std::replace(name.begin(), name.end(), '.', '_');
 
-    const std::string command = command_for(edge, node_map);
+    const std::string command = command_for(edge, edge_map);
 
     /// String passed to `nixja-scan-deps -o`
     std::string outputs_str;
@@ -381,16 +386,17 @@ Result<void> process_dep_edge(
     };
 
     for (const auto node : edge->inputs_) {
-        if (node->in_edge()) {
+        if (const Edge* producer = node->in_edge()) {
             // This node is the output of another edge
             // So we need the derivation of said node
-            if (!node_map.count(node)) {
+            const auto derivation = edge_map.find(producer);
+            if (derivation == edge_map.end()) {
                 std::cerr << "This node is false for some reason\n";
                 // return std::unexpected("");
                 continue;
             }
 
-            const json dynOutputs = node_map[node].generates_drv
+            const json dynOutputs = derivation->second.generates_drv
                 ? json({ "out", {
                                     { "dynamicOutputs", json::object() },
                                     { "outputs", json::array({ "out" }) },
@@ -398,16 +404,16 @@ Result<void> process_dep_edge(
                 : json::object();
 
             inputDrvs.push_back(
-                { node_map[node].derivation_path, {
-                                                      { "dynamicOutputs", dynOutputs },
-                                                      { "outputs", json::array({ "out" }) },
-                                                  } });
+                { derivation->second.derivation_path, {
+                                                          { "dynamicOutputs", dynOutputs },
+                                                          { "outputs", json::array({ "out" }) },
+                                                      } });
 
         } else {
             // // This node is an already existing source path
             // // so we add it to inputSrcs
             // inputSrcs.push_back(node->path());
-            // volatile bool node_is_mapped = node_map.count(node) != 0;
+            // volatile bool node_is_mapped = edge_map.count(node) != 0;
         }
     }
 
@@ -453,26 +459,23 @@ Result<void> process_dep_edge(
     const auto generated_drv_path = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, "out");
     const auto output_path = nix::DownstreamPlaceholder::unknownDerivation(generated_drv_path, "out").render();
 
-    for (const auto node : edge->outputs_) {
-        node_map[node] = Derivation {
-            .generates_drv = true,
-            // TODO: see if we can get around making a copy here
-            .derivation_path = std::string(drv_path.to_string()),
-            .generated_path = generated_drv_path.render(),
-            .output_path = output_path + "/" + node->path(),
-        };
-    }
+    edge_map[edge] = Derivation {
+        .generates_drv = true,
+        // TODO: see if we can get around making a copy here
+        .derivation_path = std::string(drv_path.to_string()),
+        .generated_path = generated_drv_path.render(),
+        .output_path = output_path,
+    };
 
     return { };
 };
 
 /// Process a single edge
-/// `node_map` is the map of each Node to the Node's corresponding output derivation
-///     Multiple nodes can have the same output derivation
+/// `edge_map` maps each build Edge to its output derivation.
 // Result<void> process_standard_edge(
 //     const Edge* edge,
 //     const std::string source_store_dir,
-//     std::unordered_map<const Node*, Derivation>& node_map) {
+//     std::unordered_map<const Node*, Derivation>& edge_map) {
 //     // processing a edge means creating a drv file for it
 //
 //     std::vector<std::string> inputSrcs;
@@ -498,13 +501,13 @@ Result<void> process_dep_edge(
 //     for (const auto node : edge->inputs_) {
 //         if (node->in_edge()) {
 //             // This node is the output of another edge
-//             if (!node_map.count(node)) {
+//             if (!edge_map.count(node)) {
 //                 std::cerr << "This node is false for some reason\n";
 //                 // return std::unexpected("");
 //                 continue;
 //             }
 //
-//             inputDrvs.push_back({ node_map[node], {
+//             inputDrvs.push_back({ edge_map[node], {
 //                                                       { "dynamicOutputs", json::object() },
 //                                                       { "outputs", json::array({ "out" }) },
 //                                                   } });
@@ -513,7 +516,7 @@ Result<void> process_dep_edge(
 //             // This node is an already existing source path
 //             // so we add it to inputSrcs
 //             inputSrcs.push_back(node->path());
-//             volatile bool node_is_mapped = node_map.count(node) != 0;
+//             volatile bool node_is_mapped = edge_map.count(node) != 0;
 //         }
 //     }
 //
@@ -534,7 +537,7 @@ Result<void> process_dep_edge(
 //     auto name = fs::path(nodes.front()->path()).filename().string();
 //     std::replace(name.begin(), name.end(), '.', '_');
 //
-//     const std::string command = command_for(edge, node_map);
+//     const std::string command = command_for(edge, edge_map);
 //
 //     std::string installPhase = "mkdir -p $out; ";
 //     for (const auto output : outputs) {
@@ -594,7 +597,7 @@ Result<void> process_dep_edge(
 //     std::cerr << drv << std::endl;
 //
 //     for (const auto node : edge->outputs_)
-//         node_map[node] = name;
+//         edge_map[node] = name;
 //
 //     return { };
 // };
@@ -642,7 +645,7 @@ void topo_process(const State& state, const nix::ref<nix::Store> store) {
         }
     }
 
-    std::unordered_map<const Node*, Derivation> node_map;
+    std::unordered_map<const Edge*, Derivation> edge_map;
 
     /// TODO: Move this out of this function
 
@@ -680,13 +683,13 @@ void topo_process(const State& state, const nix::ref<nix::Store> store) {
         queue.pop();
 
         if (!has_depfile(edge->EvaluateCommand())) {
-            // const auto result = process_standard_edge(edge, source_store_path, node_map);
+            // const auto result = process_standard_edge(edge, source_store_path, edge_map);
             // if (!result.has_value())
             //     // TODO: Don't return but handle it better
             //     return;
 
         } else {
-            const auto result = process_dep_edge(edge, source_store_path, store, node_map);
+            const auto result = process_dep_edge(edge, source_store_path, store, edge_map);
             if (!result.has_value())
                 return;
         }
