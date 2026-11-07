@@ -4,12 +4,12 @@
         "-c",
         "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\""
     ],
-    "builder": "",
+    "builder": "/nix/store/kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20/bin/bash",
     "env": {
-        "PATH": "",
-        "buildPhase": "\n        export NIXJA_BASH=;\n        export NIXJA_PATH=;\n        NIXJA_SCAN_DEPS=\"$(cc main.o hello.o world.o -o hello)\";\n        echo $NIXJA_SCAN_DEPS;\n    ",
-        "installPhase": "mkdir -p $out; cp hello $out/hello; ",
-        "linkPhase": "mkdir -p \"$NIX_BUILD_TOP\"; ",
+        "PATH": "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin",
+        "buildPhase": "export NIXJA_BASH=/nix/store/kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20/bin/bash; export NIXJA_PATH=/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin; NIXJA_SCAN_DEPS=\"$(./nixja-scan-deps -i TODO -o world.o -- cc -MD -MQ world.o -MF world.o.d -o world.o -c src/world.c)\"; echo $NIXJA_SCAN_DEPS; ",
+        "installPhase": "mkdir -p $out; cp world.o $out/world.o; ",
+        "linkPhase": "mkdir -p \"$NIX_BUILD_TOP\"; ln -s /nix/store/vxibcm76hymf16xhlcbn8vmj25xaf2zf-source/src \"$NIX_BUILD_TOP/src\"; ",
         "name": "src_main_o",
         "out": "/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9",
         "outputs": "out"
@@ -25,9 +25,9 @@
                 "outputs": ["out"]
             }
         },
-        "srcs": []
+        "srcs": ["vxibcm76hymf16xhlcbn8vmj25xaf2zf-source"]
     },
-    "name": "hello",
+    "name": "world_o",
     "outputs": { "out": { "hashAlgo": "sha256", "method": "nar" } },
     "system": "x86_64-linux",
     "version": 4
