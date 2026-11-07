@@ -13,6 +13,13 @@ target_link_libraries(nixja-gen PRIVATE
 target_precompile_headers(nixja-gen PRIVATE
     <inja/inja.hpp>
     <nlohmann/json.hpp>
+    <nix/main/shared.hh>
+    <nix/store/derivations.hh>
+    <nix/store/globals.hh>
+    <nix/store/store-api.hh>
+    <nix/store/store-dir-config.hh>
+    <nix/store/store-open.hh>
+    <nix/util/posix-source-accessor.hh>
 )
 
 target_include_directories(nixja-gen PRIVATE
