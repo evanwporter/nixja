@@ -250,6 +250,144 @@ void build_items(
     }
 }
 
+Result<void> process_dep_edge(const Edge* edge, std::unordered_map<const Node*, std::string>& node_map) {
+    // processing a edge means creating a drv file for it
+
+    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
+    // for (const auto [dep, store_path] : store_paths) {
+    //     const fs::path parent = fs::path(dep).parent_path();
+    //     if (!parent.empty())
+    //         linkPhase += fmt::format(
+    //             "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
+    //     linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
+    // };
+
+    const auto outputs = edge->outputs_;
+
+    const auto nodes = edge->outputs_;
+
+    /// Name of the Output
+    auto name = fs::path(nodes.front()->path()).filename().string();
+    std::replace(name.begin(), name.end(), '.', '_');
+
+    const std::string command = command_for(edge, node_map);
+
+    std::string installPhase = "mkdir -p $out; ";
+    for (const auto output : outputs) {
+        installPhase += fmt::format(
+            "cp {} $out/{}; ", output->path(), fs::path(output->path()).filename().string());
+    }
+
+    const char* bashBuilder = std::getenv("NIXJA_BASH");
+    if (bashBuilder == nullptr) {
+        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder\n";
+        bashBuilder = "";
+        // return std::unexpected("");
+    }
+
+    const char* buildPath = std::getenv("NIXJA_PATH");
+    if (buildPath == nullptr) {
+        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH\n";
+        buildPath = "";
+        // return std::unexpected("");
+    }
+
+    std::string buildPhase = std::format(R"NIXJA(
+        export NIXJA_BASH={};
+        export NIXJA_PATH={};
+        NIXJA_SCAN_DEPS="$({})";
+        echo $NIXJA_SCAN_DEPS;
+    )NIXJA",
+                                         bashBuilder,
+                                         buildPath,
+                                         command);
+
+    std::vector<std::string> inputSrcs;
+    // inputSrcs.reserve(store_paths.size() + 1);
+    // for (const auto& [dependency, storePath] : store_paths)
+    //     inputSrcs.push_back(fs::path(storePath).filename().string());
+    // inputSrcs.push_back(
+    //     fs::path(bashBuilder).parent_path().parent_path().filename().string());
+
+    json inputDrvs = {
+        { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
+          {
+              { "dynamicOutputs", json::object() },
+              { "outputs", json::array({ "out" }) },
+          } },
+        { "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
+          {
+              { "dynamicOutputs", json::object() },
+              { "outputs", json::array({ "out" }) },
+          } },
+    };
+
+    for (const auto node : edge->inputs_) {
+        if (node->in_edge()) {
+            // This node is the output of another edge
+            // So we need the derivation of said node
+            if (!node_map.count(node)) {
+                std::cerr << "This node is false for some reason\n";
+                // return std::unexpected("");
+                continue;
+            }
+
+            inputDrvs.push_back({ node_map[node], {
+                                                      { "dynamicOutputs", json::object() },
+                                                      { "outputs", json::array({ "out" }) },
+                                                  } });
+
+        } else {
+            // This node is an already existing source path
+            // so we add it to inputSrcs
+            inputSrcs.push_back(node->path());
+            volatile bool node_is_mapped = node_map.count(node) != 0;
+        }
+    }
+
+    const json inputsJson = {
+        { "srcs", inputSrcs },
+        // TODO: Replace with values from the toolchain file.
+        { "drvs", inputDrvs },
+    };
+
+    const json derivationEnv = {
+        { "name", "src_main_o" },
+        { "PATH", buildPath },
+        { "linkPhase", linkPhase },
+        // BUG: Ensure every parent directory of an output is created in buildPhase.
+        { "buildPhase", buildPhase },
+        { "installPhase", installPhase },
+        { "outputs", "out" },
+        { "out", nix::hashPlaceholder("out") },
+    };
+
+    const json outputsJson = {
+        { "out", {
+                     { "method", "nar" },
+                     { "hashAlgo", "sha256" },
+                 } },
+    };
+
+    const json drv = {
+        { "name", name },
+        { "system", "x86_64-linux" },
+        { "builder", bashBuilder },
+        { "version", 4u },
+        { "args", json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }) },
+        { "env", derivationEnv },
+        { "inputs", inputsJson },
+        { "outputs", outputsJson },
+    };
+
+    std::cerr << drv << std::endl;
+
+    for (const auto node : edge->outputs_)
+        node_map[node] = name;
+
+    return { };
+};
+
 /// Process a single edge
 /// `node_map` is the map of each Node to the Node's corresponding output derivation
 ///     Multiple nodes can have the same output derivation
@@ -316,25 +454,24 @@ Result<void> process_standard_edge(const Edge* edge, std::unordered_map<const No
     };
 
     for (const auto node : edge->inputs_) {
-        if (!node_map.count(node)) {
-            if (node->in_edge()) {
-                // This node is the output of another edge
-                if (!node_map.count(node)) {
-                    std::cerr << "This node is false for some reason\n";
-                    // return std::unexpected("");
-                    continue;
-                }
-
-                inputDrvs.push_back({ node_map[node], {
-                                                          { "dynamicOutputs", json::object() },
-                                                          { "outputs", json::array({ "out" }) },
-                                                      } });
-
-            } else {
-                // This node is an already existing source path
-                // so we add it to inputSrcs
-                inputSrcs.push_back(node->path());
+        if (node->in_edge()) {
+            // This node is the output of another edge
+            if (!node_map.count(node)) {
+                std::cerr << "This node is false for some reason\n";
+                // return std::unexpected("");
+                continue;
             }
+
+            inputDrvs.push_back({ node_map[node], {
+                                                      { "dynamicOutputs", json::object() },
+                                                      { "outputs", json::array({ "out" }) },
+                                                  } });
+
+        } else {
+            // This node is an already existing source path
+            // so we add it to inputSrcs
+            inputSrcs.push_back(node->path());
+            volatile bool node_is_mapped = node_map.count(node) != 0;
         }
     }
 
@@ -373,7 +510,7 @@ Result<void> process_standard_edge(const Edge* edge, std::unordered_map<const No
         { "outputs", outputsJson },
     };
 
-    std::cout << drv << std::endl;
+    std::cerr << drv << std::endl;
 
     for (const auto node : edge->outputs_)
         node_map[node] = name;
@@ -430,9 +567,12 @@ void topo_process(const State& state) {
         const auto edge = queue.front();
         queue.pop();
 
-        const auto result = process_standard_edge(edge, node_map);
-        if (!result.has_value())
-            return;
+        if (!has_depfile(edge->EvaluateCommand())) {
+            const auto result = process_standard_edge(edge, node_map);
+            if (!result.has_value())
+                // TODO: Don't return but handle it better
+                return;
+        }
 
         for (const auto neighbor : consumers[edge]) {
             indegree[neighbor]--;
