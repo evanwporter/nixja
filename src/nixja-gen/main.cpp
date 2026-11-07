@@ -39,6 +39,8 @@ using json = nlohmann::json;
 template <typename T, typename E = std::string>
 using Result = std::expected<T, E>;
 
+// TODO: I don't think this is used here
+//
 /// Execute shell command and capture stdout
 // Source - https://stackoverflow.com/a/478960
 // Posted by waqas, modified by community. See post 'Timeline' for change history
@@ -551,7 +553,7 @@ Result<void> process_standard_edge(
 
 /// Kahns Algorithm
 /// See LC Course Scheduling
-void topo_process(const State& state) {
+void topo_process(const State& state, const nix::ref<nix::Store> store) {
     // TODO: Use vector instead of unordered_map
 
     /// The number of unprocessed dependencies for a give edge
@@ -594,8 +596,18 @@ void topo_process(const State& state) {
 
     std::unordered_map<const Node*, std::string> node_map;
 
-    /// TODO: Use nix api instead
-    const auto source_store_path = exec("nix store add-path (realpath .)");
+    /// TODO: Move this out of this function
+
+    const fs::path source_dir = fs::canonical(fs::current_path());
+
+    const auto stored = store->addToStore(
+        source_dir.filename().string(), // "nixja", not "."
+        nix::PosixSourceAccessor::createAtRoot(source_dir),
+        nix::ContentAddressMethod::Raw::NixArchive);
+
+    const std::string source_store_path = store->printStorePath(stored);
+
+    std::cerr << "SOURCE STORE PATH " << source_store_path << std::endl;
 
     while (!queue.empty()) {
         const auto edge = queue.front();
@@ -665,7 +677,10 @@ int main(int argc, char* argv[]) {
 
         std::cout << env.render(nixja_gen_template, data);
 
-        topo_process(state);
+        nix::initLibStore(true);
+        const nix::ref<nix::Store> store = nix::openStore();
+
+        topo_process(state, store);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';
