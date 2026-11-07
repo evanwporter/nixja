@@ -39,6 +39,23 @@ using json = nlohmann::json;
 template <typename T, typename E = std::string>
 using Result = std::expected<T, E>;
 
+/// Execute shell command and capture stdout
+// Source - https://stackoverflow.com/a/478960
+// Posted by waqas, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-10-31, License - CC BY-SA 4.0
+std::string exec(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    return result;
+}
+
 std::string command_for(
     const Edge* edge,
     const std::unordered_map<const Node*, std::string>& node_map) {
@@ -250,7 +267,10 @@ void build_items(
     }
 }
 
-Result<void> process_dep_edge(const Edge* edge, std::unordered_map<const Node*, std::string>& node_map) {
+Result<void> process_dep_edge(
+    const Edge* edge,
+    const std::string& source_store_path,
+    std::unordered_map<const Node*, std::string>& node_map) {
     // processing a edge means creating a drv file for it
 
     std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
@@ -310,6 +330,7 @@ Result<void> process_dep_edge(const Edge* edge, std::unordered_map<const Node*, 
                                          nixja_scan_deps);
 
     std::vector<std::string> inputSrcs;
+    inputSrcs.push_back(source_store_path);
     // inputSrcs.reserve(store_paths.size() + 1);
     // for (const auto& [dependency, storePath] : store_paths)
     //     inputSrcs.push_back(fs::path(storePath).filename().string());
@@ -345,10 +366,10 @@ Result<void> process_dep_edge(const Edge* edge, std::unordered_map<const Node*, 
                                                   } });
 
         } else {
-            // This node is an already existing source path
-            // so we add it to inputSrcs
-            inputSrcs.push_back(node->path());
-            volatile bool node_is_mapped = node_map.count(node) != 0;
+            // // This node is an already existing source path
+            // // so we add it to inputSrcs
+            // inputSrcs.push_back(node->path());
+            // volatile bool node_is_mapped = node_map.count(node) != 0;
         }
     }
 
@@ -398,47 +419,11 @@ Result<void> process_dep_edge(const Edge* edge, std::unordered_map<const Node*, 
 /// Process a single edge
 /// `node_map` is the map of each Node to the Node's corresponding output derivation
 ///     Multiple nodes can have the same output derivation
-Result<void> process_standard_edge(const Edge* edge, std::unordered_map<const Node*, std::string>& node_map) {
+Result<void> process_standard_edge(
+    const Edge* edge,
+    const std::string source_store_dir,
+    std::unordered_map<const Node*, std::string>& node_map) {
     // processing a edge means creating a drv file for it
-
-    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
-    // for (const auto [dep, store_path] : store_paths) {
-    //     const fs::path parent = fs::path(dep).parent_path();
-    //     if (!parent.empty())
-    //         linkPhase += fmt::format(
-    //             "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
-    //     linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
-    // };
-
-    const auto outputs = edge->outputs_;
-
-    const auto nodes = edge->outputs_;
-
-    /// Name of the Output
-    auto name = fs::path(nodes.front()->path()).filename().string();
-    std::replace(name.begin(), name.end(), '.', '_');
-
-    const std::string command = command_for(edge, node_map);
-
-    std::string installPhase = "mkdir -p $out; ";
-    for (const auto output : outputs) {
-        installPhase += fmt::format(
-            "cp {} $out/{}; ", output->path(), fs::path(output->path()).filename().string());
-    }
-
-    const char* bashBuilder = std::getenv("NIXJA_BASH");
-    if (bashBuilder == nullptr) {
-        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder\n";
-        bashBuilder = "";
-        // return std::unexpected("");
-    }
-
-    const char* buildPath = std::getenv("NIXJA_PATH");
-    if (buildPath == nullptr) {
-        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH\n";
-        buildPath = "";
-        // return std::unexpected("");
-    }
 
     std::vector<std::string> inputSrcs;
     // inputSrcs.reserve(store_paths.size() + 1);
@@ -480,6 +465,45 @@ Result<void> process_standard_edge(const Edge* edge, std::unordered_map<const No
             inputSrcs.push_back(node->path());
             volatile bool node_is_mapped = node_map.count(node) != 0;
         }
+    }
+
+    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
+    // for (const auto [dep, store_path] : store_paths) {
+    //     const fs::path parent = fs::path(dep).parent_path();
+    //     if (!parent.empty())
+    //         linkPhase += fmt::format(
+    //             "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
+    //     linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
+    // };
+
+    const auto outputs = edge->outputs_;
+
+    const auto nodes = edge->outputs_;
+
+    /// Name of the Output
+    auto name = fs::path(nodes.front()->path()).filename().string();
+    std::replace(name.begin(), name.end(), '.', '_');
+
+    const std::string command = command_for(edge, node_map);
+
+    std::string installPhase = "mkdir -p $out; ";
+    for (const auto output : outputs) {
+        installPhase += fmt::format(
+            "cp {} $out/{}; ", output->path(), fs::path(output->path()).filename().string());
+    }
+
+    const char* bashBuilder = std::getenv("NIXJA_BASH");
+    if (bashBuilder == nullptr) {
+        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder\n";
+        bashBuilder = "";
+        // return std::unexpected("");
+    }
+
+    const char* buildPath = std::getenv("NIXJA_PATH");
+    if (buildPath == nullptr) {
+        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH\n";
+        buildPath = "";
+        // return std::unexpected("");
     }
 
     const json inputsJson = {
@@ -570,18 +594,21 @@ void topo_process(const State& state) {
 
     std::unordered_map<const Node*, std::string> node_map;
 
+    /// TODO: Use nix api instead
+    const auto source_store_path = exec("nix store add-path (realpath .)");
+
     while (!queue.empty()) {
         const auto edge = queue.front();
         queue.pop();
 
         if (!has_depfile(edge->EvaluateCommand())) {
-            const auto result = process_standard_edge(edge, node_map);
+            const auto result = process_standard_edge(edge, source_store_path, node_map);
             if (!result.has_value())
                 // TODO: Don't return but handle it better
                 return;
 
         } else {
-            const auto result = process_dep_edge(edge, node_map);
+            const auto result = process_dep_edge(edge, source_store_path, node_map);
             if (!result.has_value())
                 return;
         }
