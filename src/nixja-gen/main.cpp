@@ -253,7 +253,7 @@ void build_items(
 /// Process a single edge
 /// `node_map` is the map of each Node to the Node's corresponding output derivation
 ///     Multiple nodes can have the same output derivation
-Result<void> process_edge(const Edge* edge, std::unordered_map<const Node*, std::string>& node_map) {
+Result<void> process_standard_edge(const Edge* edge, std::unordered_map<const Node*, std::string>& node_map) {
     // processing a edge means creating a drv file for it
 
     std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
@@ -283,14 +283,16 @@ Result<void> process_edge(const Edge* edge, std::unordered_map<const Node*, std:
 
     const char* bashBuilder = std::getenv("NIXJA_BASH");
     if (bashBuilder == nullptr) {
-        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder";
-        return std::unexpected("");
+        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder\n";
+        bashBuilder = "";
+        // return std::unexpected("");
     }
 
     const char* buildPath = std::getenv("NIXJA_PATH");
     if (buildPath == nullptr) {
-        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH";
-        return std::unexpected("");
+        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH\n";
+        buildPath = "";
+        // return std::unexpected("");
     }
 
     std::vector<std::string> inputSrcs;
@@ -300,7 +302,7 @@ Result<void> process_edge(const Edge* edge, std::unordered_map<const Node*, std:
     // inputSrcs.push_back(
     //     fs::path(bashBuilder).parent_path().parent_path().filename().string());
 
-    const json inputDrvs = {
+    json inputDrvs = {
         { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
           {
               { "dynamicOutputs", json::object() },
@@ -312,6 +314,29 @@ Result<void> process_edge(const Edge* edge, std::unordered_map<const Node*, std:
               { "outputs", json::array({ "out" }) },
           } },
     };
+
+    for (const auto node : edge->inputs_) {
+        if (!node_map.count(node)) {
+            if (node->in_edge()) {
+                // This node is the output of another edge
+                if (!node_map.count(node)) {
+                    std::cerr << "This node is false for some reason\n";
+                    // return std::unexpected("");
+                    continue;
+                }
+
+                inputDrvs.push_back({ node_map[node], {
+                                                          { "dynamicOutputs", json::object() },
+                                                          { "outputs", json::array({ "out" }) },
+                                                      } });
+
+            } else {
+                // This node is an already existing source path
+                // so we add it to inputSrcs
+                inputSrcs.push_back(node->path());
+            }
+        }
+    }
 
     const json inputsJson = {
         { "srcs", inputSrcs },
@@ -347,6 +372,13 @@ Result<void> process_edge(const Edge* edge, std::unordered_map<const Node*, std:
         { "inputs", inputsJson },
         { "outputs", outputsJson },
     };
+
+    std::cout << drv << std::endl;
+
+    for (const auto node : edge->outputs_)
+        node_map[node] = name;
+
+    return { };
 };
 
 /// Kahns Algorithm
@@ -389,6 +421,24 @@ void topo_process(const State& state) {
     for (const auto* edge : state.edges_) {
         if (indegree[edge] == 0) {
             queue.push(edge);
+        }
+    }
+
+    std::unordered_map<const Node*, std::string> node_map;
+
+    while (!queue.empty()) {
+        const auto edge = queue.front();
+        queue.pop();
+
+        const auto result = process_standard_edge(edge, node_map);
+        if (!result.has_value())
+            return;
+
+        for (const auto neighbor : consumers[edge]) {
+            indegree[neighbor]--;
+
+            if (indegree[neighbor] == 0)
+                queue.push(neighbor);
         }
     }
 }
@@ -435,6 +485,8 @@ int main(int argc, char* argv[]) {
         inja::Environment env;
 
         std::cout << env.render(nixja_gen_template, data);
+
+        topo_process(state);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';
