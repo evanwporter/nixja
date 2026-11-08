@@ -269,32 +269,19 @@ Result<void> process_standard_edge(
 
     // A derivation-producing output must itself end in `.drv`. Nix uses that
     // suffix to parse the first dynamic output as a derivation path.
-    const std::string derivationName = name + ".drv";
+    const std::string derivationName = name;
 
     const std::string command = command_for(edge, edge_map);
 
     std::string buildPhase;
     std::string installPhase;
-    if (has_depfile(command)) {
-        /// String passed to `nixja-scan-deps -o`
-        std::string outputs_str;
-        for (const auto& output : edge->outputs_)
-            outputs_str += output->path();
 
-        const std::string nixja_scan_deps = fmt::format(
-            "./nixja-scan-deps -i TODO -o {} -- {}",
-            outputs_str,
-            command);
+    buildPhase = fmt::format("{0}; echo {0};", command);
 
-        // This is the scanning stage, not the compilation stage. Its output
-        // is the derivation emitted by nixja-scan-deps; the derivation itself
-        // builds the object files once Nix resolves the dynamic output.
-        installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
-        buildPhase = std::format(
-            R"NIXJA(NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA",
-            nixja_scan_deps);
-    } else {
-        process_standard_edge(edge, command, buildPhase, installPhase);
+    installPhase = "mkdir -p $out;";
+    for (const auto output : edge->outputs_) {
+        // TODO: copy the path all the way down
+        installPhase += fmt::format("cp {0} $out/{0}", output->path());
     }
 
     const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
@@ -330,6 +317,8 @@ Result<void> process_standard_edge(
             // So we need the derivation of said node
             const auto derivation = edge_map.find(producer);
             if (derivation == edge_map.end()) {
+                // TODO: Handle better
+                // TODO: Make this error more noticable
                 std::cerr << "This node is false for some reason\n";
                 // return std::unexpected("");
                 continue;
@@ -377,7 +366,7 @@ Result<void> process_standard_edge(
 
     const json outputsJson = {
         { "out", {
-                     { "method", "text" },
+                     { "method", "nar" },
                      { "hashAlgo", "sha256" },
                  } },
     };
@@ -395,15 +384,13 @@ Result<void> process_standard_edge(
 
     const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
     const auto drv_path = store->writeDerivation(derivation);
-    const auto generated_drv_path = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, "out");
-    const auto output_path = nix::DownstreamPlaceholder::unknownDerivation(generated_drv_path, "out").render();
+    const auto output_path = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, "out").render();
 
     edge_map[edge] = Derivation {
         .generates_drv = false,
         // TODO: see if we can get around making a copy here
         .derivation_path = std::string(drv_path.to_string()),
         .derivation_store_path = store->printStorePath(drv_path),
-        .generated_path = generated_drv_path.render(),
         .output_path = output_path,
     };
 
@@ -662,6 +649,10 @@ void topo_process(
             const auto result = process_dep_edge(edge, source_store_path, store, edge_map);
             if (!result.has_value())
                 return;
+        } else {
+            const auto result = process_standard_edge(edge, source_store_path, store, edge_map);
+            if (!result.has_value())
+                return;
         }
 
         for (const auto neighbor : consumers[edge]) {
@@ -735,7 +726,7 @@ int main(int argc, char* argv[]) {
 
         // Construct Inja data.
         json data = {
-            { "standardItems", standard_items },
+            { "standardItems", standard_items_new },
             { "depItems", dep_items_new },
             { "target", target }
         };
