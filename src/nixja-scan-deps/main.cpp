@@ -101,10 +101,6 @@ local_dependencies(
 
     for (const auto& dependency : dependencies) {
         const fs::path path(dependency);
-        // The source tree is deliberately assembled from symlinks in the
-        // build directory.  Canonicalising here follows those links into the
-        // Nix store, making valid paths such as src/world.c appear outside
-        // the project.  Keep a lexical project-relative path instead.
         const fs::path relative = path.is_absolute()
             ? path.lexically_relative(source_root)
             : path.lexically_normal();
