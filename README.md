@@ -63,3 +63,8 @@ This release will generate drv files directly and add them to the store with nix
 ## 0.3.0
 
 This release will replace nix store add and interface with the C++ nix api directly.
+
+
+## TO THINK ABOUT
+
+Idk what will happen if ninja writes the output files outside of the ./ directory
