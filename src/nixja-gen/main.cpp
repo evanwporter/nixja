@@ -340,6 +340,9 @@ Result<void> process_dep_edge(
     /// Name of the Output
     auto name = fs::path(nodes.front()->path()).filename().string();
     std::replace(name.begin(), name.end(), '.', '_');
+    // A derivation-producing output must itself end in .drv.  Nix uses that
+    // suffix to parse the first dynamic output as a derivation path.
+    const std::string derivationName = name + ".drv";
 
     const std::string command = command_for(edge, edge_map);
 
@@ -423,7 +426,7 @@ Result<void> process_dep_edge(
     };
 
     const json derivationEnv = {
-        { "name", "src_main_o" },
+        { "name", derivationName },
         { "PATH", buildPath },
         { "linkPhase", linkPhase },
         // BUG: Ensure every parent directory of an output is created in buildPhase.
@@ -442,7 +445,7 @@ Result<void> process_dep_edge(
     };
 
     const json drv = {
-        { "name", name },
+        { "name", derivationName },
         { "system", "x86_64-linux" },
         { "builder", bashBuilder },
         { "version", 4u },
