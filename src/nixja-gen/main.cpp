@@ -54,7 +54,11 @@ struct Derivation {
 
     bool generates_drv;
 
+    /// Store-file name, used in serialized derivation input maps.
     std::string derivation_path;
+
+    /// Absolute store path, used when rendering Nix expressions.
+    std::string derivation_store_path;
 
     /// If `generates_drv` is true then this is not empty
     /// The output of this creats the output path.
@@ -314,6 +318,12 @@ Result<void> process_dep_edge(
     linkPhase += fmt::format(
         "ln -s {}/src \"$NIX_BUILD_TOP/src\"; ",
         source_store_path);
+    linkPhase += fmt::format(
+        "ln -s {}/nixja-scan-deps \"$NIX_BUILD_TOP/nixja-scan-deps\"; ",
+        source_store_path);
+    linkPhase += fmt::format(
+        "ln -s {}/lib*.so* \"$NIX_BUILD_TOP/\"; ",
+        source_store_path);
 
     // for (const auto [dep, store_path] : store_paths) {
     //     const fs::path parent = fs::path(dep).parent_path();
@@ -346,19 +356,8 @@ Result<void> process_dep_edge(
             "cp {} $out/{}; ", output->path(), fs::path(output->path()).filename().string());
     }
 
-    const char* bashBuilder = std::getenv("NIXJA_BASH");
-    if (bashBuilder == nullptr) {
-        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder\n";
-        bashBuilder = "/nix/store/kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20/bin/bash";
-        // return std::unexpected("");
-    }
-
-    const char* buildPath = std::getenv("NIXJA_PATH");
-    if (buildPath == nullptr) {
-        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH\n";
-        buildPath = "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
-        // return std::unexpected("");
-    }
+    const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
+    const char* buildPath = "/nix/store/cj3il9qsgnh2msf8lzvgp2bmmmz91ppq-clang-tools-22.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
 
     std::string buildPhase = std::format(R"NIXJA(export NIXJA_BASH={}; export NIXJA_PATH={}; NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA", bashBuilder, buildPath, nixja_scan_deps);
 
@@ -372,18 +371,18 @@ Result<void> process_dep_edge(
     // inputSrcs.push_back(
     //     fs::path(bashBuilder).parent_path().parent_path().filename().string());
 
-    json inputDrvs = {
-        { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
-          {
-              { "dynamicOutputs", json::object() },
-              { "outputs", json::array({ "out" }) },
-          } },
-        { "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
-          {
-              { "dynamicOutputs", json::object() },
-              { "outputs", json::array({ "out" }) },
-          } },
-    };
+    json inputDrvs = json::object();
+    for (const char* derivation_path : {
+             "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
+             "m7bmd2qz1zcnk4k25y5cg6wbb3y9qwcb-coreutils-9.12.drv",
+             "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
+             "i2c95d3micni8d6vp3sqh5wqkcz07711-clang-tools-22.1.8.drv",
+         }) {
+        inputDrvs[derivation_path] = {
+            { "dynamicOutputs", json::object() },
+            { "outputs", json::array({ "out" }) },
+        };
+    }
 
     for (const auto node : edge->inputs_) {
         if (const Edge* producer = node->in_edge()) {
@@ -463,6 +462,7 @@ Result<void> process_dep_edge(
         .generates_drv = true,
         // TODO: see if we can get around making a copy here
         .derivation_path = std::string(drv_path.to_string()),
+        .derivation_store_path = store->printStorePath(drv_path),
         .generated_path = generated_drv_path.render(),
         .output_path = output_path,
     };
@@ -604,7 +604,10 @@ Result<void> process_dep_edge(
 
 /// Kahns Algorithm
 /// See LC Course Scheduling
-void topo_process(const State& state, const nix::ref<nix::Store> store) {
+void topo_process(
+    const State& state,
+    const nix::ref<nix::Store> store,
+    std::unordered_map<const Edge*, Derivation>& edge_map) {
     // TODO: Use vector instead of unordered_map
 
     /// The number of unprocessed dependencies for a give edge
@@ -645,8 +648,6 @@ void topo_process(const State& state, const nix::ref<nix::Store> store) {
         }
     }
 
-    std::unordered_map<const Edge*, Derivation> edge_map;
-
     /// TODO: Move this out of this function
 
     // const fs::path source_dir = fs::canonical(fs::current_path());
@@ -664,7 +665,11 @@ void topo_process(const State& state, const nix::ref<nix::Store> store) {
     nix::PathFilter only_src = [project_root](const std::string& path) {
         const fs::path relative = fs::path(path).lexically_relative(project_root);
         const std::string rel = relative.generic_string();
-        return rel == "." || rel == "src" || rel.starts_with("src/");
+        return rel == "."
+            || rel == "src"
+            || rel.starts_with("src/")
+            || rel == "nixja-scan-deps"
+            || (rel.starts_with("lib") && !rel.contains('/'));
     };
     const auto stored = store->addToStore(
         "source",
@@ -735,23 +740,32 @@ int main(int argc, char* argv[]) {
             standard_items,
             dep_items);
 
+        nix::experimentalFeatureSettings.experimentalFeatures.set(
+            "ca-derivations dynamic-derivations");
+        nix::initLibStore(true);
+        const nix::ref<nix::Store> store = nix::openStore();
+
+        std::unordered_map<const Edge*, Derivation> edge_map;
+        topo_process(state, store, edge_map);
+
+        std::vector<json> dep_items_new;
+        for (const auto [k, v] : edge_map) {
+            std::string attr = k->outputs_.front()->path();
+            std::replace(attr.begin(), attr.end(), '/', '_');
+            std::replace(attr.begin(), attr.end(), '.', '_');
+            dep_items_new.push_back({ { attr, v.derivation_store_path } });
+        }
+
         // Construct Inja data.
         json data = {
             { "standardItems", standard_items },
-            { "depItems", dep_items },
+            { "depItems", dep_items_new },
             { "target", target }
         };
 
         inja::Environment env;
 
         std::cout << env.render(nixja_gen_template, data);
-
-        nix::experimentalFeatureSettings.experimentalFeatures.set(
-            "ca-derivations dynamic-derivations");
-        nix::initLibStore(true);
-        const nix::ref<nix::Store> store = nix::openStore();
-
-        topo_process(state, store);
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';

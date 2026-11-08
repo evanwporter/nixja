@@ -28,7 +28,7 @@
         "srcs": ["vxibcm76hymf16xhlcbn8vmj25xaf2zf-source"]
     },
     "name": "world_o",
-    "outputs": { "out": { "hashAlgo": "sha256", "method": "nar" } },
+    "outputs": { "out": { "hashAlgo": "sha256", "method": "text" } },
     "system": "x86_64-linux",
     "version": 4
 }

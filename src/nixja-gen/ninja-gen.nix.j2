@@ -73,16 +73,9 @@ let
     }).outPath "out";
 
 {% for item in depItems  %}
-    {{item.attrKey}} = mkDepItem {
-        name = "{{item.attrKey}}";
-        outputs = [
-            {% for output in item.outputs %}
-            "{{ output }}"
-            {% endfor %}
-        ];
-        command = "{{ item.command }}";
-        # TODO: Handle dependencies and implicit dependencies
-    };
+    {% for attr, drv_path in item %}
+    {{attr}} = builtins.outputOf (builtins.storePath "{{drv_path}}") "out";
+    {% endfor %}
 {% endfor %}
 
 {% for item in standardItems  %}
