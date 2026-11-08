@@ -74,7 +74,10 @@ let
 
 {% for item in depItems  %}
     {% for attr, drv_path in item %}
-    {{attr}} = builtins.outputOf (builtins.storePath "{{drv_path}}") "out";
+    # The first output is a text-addressed .drv produced by the scanner.  Ask
+    # for its out output as well, which is the directory containing the
+    # compiled edge outputs.
+    {{attr}} = builtins.outputOf (builtins.outputOf (builtins.storePath "{{drv_path}}") "out") "out";
     {% endfor %}
 {% endfor %}
 
