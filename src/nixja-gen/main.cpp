@@ -600,7 +600,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        std::cout << edge_map[target_edge].derivation_path;
+        std::cout << edge_map[target_edge].derivation_store_path << '\n';
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';
