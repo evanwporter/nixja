@@ -183,39 +183,6 @@ json make_standard_item(
     };
 }
 
-/// DepItem
-json make_dep_item(
-    const std::vector<std::string>& outputs,
-    const std::string& command,
-    const std::vector<std::string>& dependencies,
-    const std::vector<std::string>& implicit_dependencies,
-    const std::unordered_set<std::string>& generated_outputs) {
-    json deps = json::array();
-    json implicit_deps = json::array();
-
-    for (const auto& dependency : dependencies) {
-        deps.push_back(
-            dependency_for(dependency, generated_outputs));
-    }
-
-    for (const auto& dependency : implicit_dependencies) {
-        implicit_deps.push_back(
-            dependency_for(dependency, generated_outputs));
-    }
-
-    // TODO: Potentially combine with above (the next two lines)
-    std::string attr = outputs.front();
-    std::replace(attr.begin(), attr.end(), '.', '_');
-
-    return {
-        { "outputs", outputs },
-        { "attrKey", attr },
-        { "command", command },
-        { "dependencies", deps },
-        { "implicit_dependencies", implicit_deps }
-    };
-}
-
 /// Construct template items from Ninja graph
 /// A single item corresponds to a derivation in nix and a build edge in ninja.
 void build_items(
@@ -256,36 +223,7 @@ void build_items(
 
         const std::string command = command_for(edge, edge_map);
 
-        if (has_depfile(command)) {
-            std::vector<std::string> dependencies;
-
-            // Identify implicit Ninja inputs.
-            std::vector<std::string> implicit_dependencies;
-
-            const size_t implicit_count = edge->implicit_deps_;
-            const size_t order_only_count = edge->order_only_deps_;
-
-            const size_t explicit_count = edge->inputs_.size()
-                - implicit_count
-                - order_only_count;
-
-            for (
-                size_t i = explicit_count;
-                i < explicit_count + implicit_count;
-                ++i) {
-                implicit_dependencies.push_back(
-                    edge->inputs_[i]->path());
-            }
-
-            dep_items.push_back(
-                make_dep_item(
-                    outputs,
-                    command,
-                    dependencies,
-                    implicit_dependencies,
-                    generated_outputs));
-
-        } else {
+        if (!has_depfile(command)) {
             std::vector<std::string> dependencies;
 
             for (const Node* input : edge->inputs_) {
