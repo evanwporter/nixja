@@ -227,7 +227,32 @@ void build_items(
     }
 }
 
-Result<void> process_dep_edge(
+void process_dep_edge(
+    const Edge* edge,
+    const std::string& command,
+    /// Outputs buildPhase
+    std::string& buildPhase,
+    std::string& installPhase) {
+    /// String passed to `nixja-scan-deps -o`
+    std::string outputs_str;
+    for (const auto& output : edge->outputs_)
+        outputs_str += output->path();
+
+    const std::string nixja_scan_deps = fmt::format("./nixja-scan-deps -i TODO -o {} -- {}", outputs_str, command);
+
+    // This is the scanning stage, not the compilation stage.  Its output is
+    // the derivation emitted by nixja-scan-deps; the derivation itself builds
+    // the object files once Nix resolves the dynamic output.
+    installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
+
+    buildPhase = std::format(R"NIXJA(NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA", nixja_scan_deps);
+}
+
+void process_standard_edge(const std::string& command, std::string& buildPhase) {
+    buildPhase = fmt::format("{0}; echo {0};", command);
+}
+
+Result<void> process_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
@@ -252,28 +277,23 @@ Result<void> process_dep_edge(
     /// Name of the Output
     auto name = fs::path(nodes.front()->path()).filename().string();
     std::replace(name.begin(), name.end(), '.', '_');
-    // A derivation-producing output must itself end in .drv.  Nix uses that
+
+    // A derivation-producing output must itself end in `.drv`. Nix uses that
     // suffix to parse the first dynamic output as a derivation path.
     const std::string derivationName = name + ".drv";
 
     const std::string command = command_for(edge, edge_map);
 
-    /// String passed to `nixja-scan-deps -o`
-    std::string outputs_str;
-    for (const auto& output : edge->outputs_)
-        outputs_str += output->path();
-
-    const std::string nixja_scan_deps = fmt::format("./nixja-scan-deps -i TODO -o {} -- {}", outputs_str, command);
-
-    // This is the scanning stage, not the compilation stage.  Its output is
-    // the derivation emitted by nixja-scan-deps; the derivation itself builds
-    // the object files once Nix resolves the dynamic output.
-    const std::string installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
+    std::string buildPhase;
+    std::string installPhase;
+    if (has_depfile(command)) {
+        process_dep_edge(edge, command, buildPhase, installPhase);
+    } else {
+        process_standard_edge(command, buildPhase);
+    }
 
     const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
     const char* buildPath = "/nix/store/g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
-
-    std::string buildPhase = std::format(R"NIXJA(export NIXJA_BASH={}; export NIXJA_PATH={}; NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA", bashBuilder, buildPath, nixja_scan_deps);
 
     std::vector<std::string> inputSrcs;
     inputSrcs.push_back(
@@ -340,6 +360,8 @@ Result<void> process_dep_edge(
     const json derivationEnv = {
         { "name", derivationName },
         { "PATH", buildPath },
+        { "NIXJA_PATH", buildPath },
+        { "NIXJA_BASH", bashBuilder },
         { "linkPhase", linkPhase },
         // BUG: Ensure every parent directory of an output is created in buildPhase.
         { "buildPhase", buildPhase },
@@ -469,14 +491,8 @@ void topo_process(
         const auto edge = queue.front();
         queue.pop();
 
-        if (!has_depfile(edge->EvaluateCommand())) {
-            // const auto result = process_standard_edge(edge, source_store_path, edge_map);
-            // if (!result.has_value())
-            //     // TODO: Don't return but handle it better
-            //     return;
-
-        } else {
-            const auto result = process_dep_edge(edge, source_store_path, store, edge_map);
+        if (has_depfile(edge->EvaluateCommand())) {
+            const auto result = process_edge(edge, source_store_path, store, edge_map);
             if (!result.has_value())
                 return;
         }

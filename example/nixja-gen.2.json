@@ -1,0 +1,34 @@
+{
+    "args": [
+        "-e",
+        "-c",
+        "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\""
+    ],
+    "builder": "",
+    "env": {
+        "PATH": "",
+        "buildPhase": "cc main.o hello.o world.o -o hello",
+        "installPhase": "mkdir -p $out; cp hello $out/hello; ",
+        "linkPhase": "mkdir -p \"$NIX_BUILD_TOP\"; ",
+        "name": "src_main_o",
+        "out": "/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9",
+        "outputs": "out"
+    },
+    "inputs": {
+        "drvs": {
+            "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv": {
+                "dynamicOutputs": {},
+                "outputs": ["out"]
+            },
+            "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv": {
+                "dynamicOutputs": {},
+                "outputs": ["out"]
+            }
+        },
+        "srcs": []
+    },
+    "name": "hello",
+    "outputs": { "out": { "hashAlgo": "sha256", "method": "nar" } },
+    "system": "x86_64-linux",
+    "version": 4
+}

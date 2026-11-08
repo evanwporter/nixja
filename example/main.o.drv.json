@@ -1,0 +1,49 @@
+{
+    "derivations": {
+        "76151njcm866zwk2ajpfdqcrs3mww0vr-main_o.drv": {
+            "args": [
+                "-e",
+                "-c",
+                "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\""
+            ],
+            "builder": "/nix/store/kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20/bin/bash",
+            "env": {
+                "PATH": "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin",
+                "buildPhase": "cc -MD -MQ main.o -MF main.o.d -o main.o -c src/main.c",
+                "installPhase": "mkdir -p $out; cp main.o $out/main.o; ",
+                "linkPhase": "mkdir -p \"$NIX_BUILD_TOP\"; mkdir -p \"$NIX_BUILD_TOP/src\"; ln -s /nix/store/nd2xdxjvx053qxklg6wcilgg58jasqlw-hello.h \"$NIX_BUILD_TOP/src/hello.h\"; mkdir -p \"$NIX_BUILD_TOP/src\"; ln -s /nix/store/wb3vi3lm688hvy7r9iq6rbq8a4pkcz2r-world.h \"$NIX_BUILD_TOP/src/world.h\"; mkdir -p \"$NIX_BUILD_TOP/src\"; ln -s /nix/store/71yyavp29wl3knvjgwifsgblaxw2vj6c-main.c \"$NIX_BUILD_TOP/src/main.c\"; ",
+                "name": "src_main_o",
+                "out": "/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9",
+                "outputs": "out"
+            },
+            "inputs": {
+                "drvs": {
+                    "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv": {
+                        "dynamicOutputs": {},
+                        "outputs": ["out"]
+                    },
+                    "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv": {
+                        "dynamicOutputs": {},
+                        "outputs": ["out"]
+                    }
+                },
+                "srcs": [
+                    "71yyavp29wl3knvjgwifsgblaxw2vj6c-main.c",
+                    "kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20",
+                    "nd2xdxjvx053qxklg6wcilgg58jasqlw-hello.h",
+                    "wb3vi3lm688hvy7r9iq6rbq8a4pkcz2r-world.h"
+                ]
+            },
+            "name": "main_o",
+            "outputs": {
+                "out": {
+                    "hashAlgo": "sha256",
+                    "method": "nar"
+                }
+            },
+            "system": "x86_64-linux",
+            "version": 4
+        }
+    },
+    "version": 4
+}

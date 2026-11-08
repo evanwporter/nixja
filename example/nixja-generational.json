@@ -1,0 +1,34 @@
+{
+    "args": [
+        "-e",
+        "-c",
+        "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\""
+    ],
+    "builder": "/nix/store/kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20/bin/bash",
+    "env": {
+        "PATH": "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin",
+        "buildPhase": "export NIXJA_BASH=/nix/store/kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20/bin/bash; export NIXJA_PATH=/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin; NIXJA_SCAN_DEPS=\"$(./nixja-scan-deps -i TODO -o world.o -- cc -MD -MQ world.o -MF world.o.d -o world.o -c src/world.c)\"; echo $NIXJA_SCAN_DEPS; ",
+        "installPhase": "mkdir -p $out; cp world.o $out/world.o; ",
+        "linkPhase": "mkdir -p \"$NIX_BUILD_TOP\"; ln -s /nix/store/vxibcm76hymf16xhlcbn8vmj25xaf2zf-source/src \"$NIX_BUILD_TOP/src\"; ",
+        "name": "src_main_o",
+        "out": "/1rz4g4znpzjwh1xymhjpm42vipw92pr73vdgl6xs1hycac8kf2n9",
+        "outputs": "out"
+    },
+    "inputs": {
+        "drvs": {
+            "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv": {
+                "dynamicOutputs": {},
+                "outputs": ["out"]
+            },
+            "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv": {
+                "dynamicOutputs": {},
+                "outputs": ["out"]
+            }
+        },
+        "srcs": ["vxibcm76hymf16xhlcbn8vmj25xaf2zf-source"]
+    },
+    "name": "world_o",
+    "outputs": { "out": { "hashAlgo": "sha256", "method": "text" } },
+    "system": "x86_64-linux",
+    "version": 4
+}
