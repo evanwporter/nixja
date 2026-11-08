@@ -232,6 +232,7 @@ void process_dep_edge(
     const std::string& command,
     /// Outputs buildPhase
     std::string& buildPhase,
+    /// Outputs installPhase
     std::string& installPhase) {
     /// String passed to `nixja-scan-deps -o`
     std::string outputs_str;
@@ -244,12 +245,21 @@ void process_dep_edge(
     // the derivation emitted by nixja-scan-deps; the derivation itself builds
     // the object files once Nix resolves the dynamic output.
     installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
-
     buildPhase = std::format(R"NIXJA(NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA", nixja_scan_deps);
 }
 
-void process_standard_edge(const std::string& command, std::string& buildPhase) {
+void process_standard_edge(
+    const Edge* edge,
+    const std::string& command,
+    std::string& buildPhase,
+    std::string& installPhase) {
     buildPhase = fmt::format("{0}; echo {0};", command);
+
+    installPhase = "mkdir -p $out;";
+    for (const auto output : edge->outputs_) {
+        // TODO: copy the path all the way down
+        installPhase += fmt::format("cp {0} $out/{0}", output->path());
+    }
 }
 
 Result<void> process_edge(
@@ -289,7 +299,7 @@ Result<void> process_edge(
     if (has_depfile(command)) {
         process_dep_edge(edge, command, buildPhase, installPhase);
     } else {
-        process_standard_edge(command, buildPhase);
+        process_standard_edge(edge, command, buildPhase, installPhase);
     }
 
     const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
@@ -331,17 +341,16 @@ Result<void> process_edge(
             }
 
             const json dynOutputs = derivation->second.generates_drv
-                ? json({ "out", {
-                                    { "dynamicOutputs", json::object() },
-                                    { "outputs", json::array({ "out" }) },
-                                } })
+                ? json::object({ { "out", {
+                                              { "dynamicOutputs", json::object() },
+                                              { "outputs", json::array({ "out" }) },
+                                          } } })
                 : json::object();
 
-            inputDrvs.push_back(
-                { derivation->second.derivation_path, {
-                                                          { "dynamicOutputs", dynOutputs },
-                                                          { "outputs", json::array({ "out" }) },
-                                                      } });
+            inputDrvs[derivation->second.derivation_path] = {
+                { "dynamicOutputs", dynOutputs },
+                { "outputs", json::array({ "out" }) },
+            };
 
         } else {
             // // This node is an already existing source path
@@ -395,7 +404,7 @@ Result<void> process_edge(
     const auto output_path = nix::DownstreamPlaceholder::unknownDerivation(generated_drv_path, "out").render();
 
     edge_map[edge] = Derivation {
-        .generates_drv = true,
+        .generates_drv = has_depfile(command),
         // TODO: see if we can get around making a copy here
         .derivation_path = std::string(drv_path.to_string()),
         .derivation_store_path = store->printStorePath(drv_path),
@@ -491,11 +500,9 @@ void topo_process(
         const auto edge = queue.front();
         queue.pop();
 
-        if (has_depfile(edge->EvaluateCommand())) {
-            const auto result = process_edge(edge, source_store_path, store, edge_map);
-            if (!result.has_value())
-                return;
-        }
+        const auto result = process_edge(edge, source_store_path, store, edge_map);
+        if (!result.has_value())
+            return;
 
         for (const auto neighbor : consumers[edge]) {
             indegree[neighbor]--;
@@ -548,15 +555,27 @@ int main(int argc, char* argv[]) {
 
         std::vector<json> dep_items_new;
         for (const auto [k, v] : edge_map) {
-            std::string attr = k->outputs_.front()->path();
-            std::replace(attr.begin(), attr.end(), '/', '_');
-            std::replace(attr.begin(), attr.end(), '.', '_');
-            dep_items_new.push_back({ { attr, v.derivation_store_path } });
+            if (v.generates_drv) {
+                std::string attr = k->outputs_.front()->path();
+                std::replace(attr.begin(), attr.end(), '/', '_');
+                std::replace(attr.begin(), attr.end(), '.', '_');
+                dep_items_new.push_back({ { attr, v.derivation_store_path } });
+            }
+        }
+
+        std::vector<json> standard_items_new;
+        for (const auto [k, v] : edge_map) {
+            if (!v.generates_drv) {
+                std::string attr = k->outputs_.front()->path();
+                std::replace(attr.begin(), attr.end(), '/', '_');
+                std::replace(attr.begin(), attr.end(), '.', '_');
+                standard_items_new.push_back({ { attr, v.derivation_store_path } });
+            }
         }
 
         // Construct Inja data.
         json data = {
-            { "standardItems", standard_items },
+            { "standardItems", standard_items_new },
             { "depItems", dep_items_new },
             { "target", target }
         };
