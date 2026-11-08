@@ -15,7 +15,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <inja/inja.hpp>
 #include <nlohmann/json.hpp>
 
 #include <nix/main/shared.hh>
@@ -30,8 +29,6 @@
 #include "graph.h"
 #include "manifest_parser.h"
 #include "state.h"
-
-#include "nixja-gen.hpp"
 
 namespace fs = std::filesystem;
 
@@ -116,116 +113,8 @@ bool has_depfile(const std::string& command) {
     return false;
 }
 
-/// Dependency representation
-json dependency_for(
-    const std::string& value,
-    const std::unordered_set<std::string>& generated_outputs) {
-    bool is_node = generated_outputs.find(value)
-        != generated_outputs.end();
-
-    std::string attr = value;
-
-    std::replace(attr.begin(), attr.end(), '.', '_');
-
-    return {
-        { "value", value },
-        { "is_node", is_node },
-        { "rendered", is_node ? "${" + attr + "}" : value },
-        { "source_path", "./" + value }
-    };
-}
-
 // TODO: Combine the next two functions into one simpler one
 // The only difference is how it forms the dep list
-
-/// StandardItem
-json make_standard_item(
-    const std::vector<std::string>& outputs,
-    const std::string& command,
-    const std::vector<std::string>& dependencies,
-    const std::unordered_set<std::string>& generated_outputs) {
-    json deps = json::array();
-
-    for (const auto& dependency : dependencies) {
-        deps.push_back(
-            dependency_for(dependency, generated_outputs));
-    }
-
-    // TODO: Check if outputs is empty?
-
-    std::string attr = outputs.front();
-
-    std::replace(attr.begin(), attr.end(), '.', '_');
-
-    return {
-        { "outputs", outputs },
-        { "attrKey", attr },
-        { "command", command },
-        { "dependencies", deps }
-    };
-}
-
-/// Construct template items from Ninja graph
-/// A single item corresponds to a derivation in nix and a build edge in ninja.
-void build_items(
-    State& state,
-    json& standard_items,
-    json& dep_items) {
-    // Collect every generated output.
-    std::unordered_set<std::string> generated_outputs;
-    std::unordered_map<const Edge*, Derivation> edge_map;
-
-    for (const Edge* edge : state.edges_) {
-        if (edge->outputs_.empty())
-            continue;
-
-        std::string attr = edge->outputs_.front()->path();
-        std::replace(attr.begin(), attr.end(), '/', '_');
-        std::replace(attr.begin(), attr.end(), '.', '_');
-
-        edge_map[edge] = Derivation {
-            .output_path = "${" + attr + "}"
-        };
-
-        for (const Node* output : edge->outputs_) {
-            generated_outputs.insert(output->path());
-        }
-    }
-
-    // Process each edge once.
-    for (const Edge* edge : state.edges_) {
-        if (edge->outputs_.empty())
-            continue;
-
-        std::vector<std::string> outputs;
-
-        for (const auto& output : edge->outputs_) {
-            outputs.push_back(output->path());
-        }
-
-        const std::string command = command_for(edge, edge_map);
-
-        if (!has_depfile(command)) {
-            std::vector<std::string> dependencies;
-
-            for (const Node* input : edge->inputs_) {
-                const std::string path = input->path();
-
-                if (generated_outputs.find(path)
-                    == generated_outputs.end()) {
-                    dependencies.push_back(path);
-                }
-            }
-
-            standard_items.push_back(
-                make_standard_item(
-                    outputs,
-                    command,
-                    dependencies,
-                    generated_outputs));
-        }
-    }
-}
 
 void process_standard_edge(
     const Edge* edge,
@@ -687,15 +576,6 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Construct template items.
-        json standard_items = json::array();
-        json dep_items = json::array();
-
-        build_items(
-            state,
-            standard_items,
-            dep_items);
-
         nix::experimentalFeatureSettings.experimentalFeatures.set(
             "ca-derivations dynamic-derivations");
         nix::initLibStore(true);
@@ -704,36 +584,23 @@ int main(int argc, char* argv[]) {
         std::unordered_map<const Edge*, Derivation> edge_map;
         topo_process(state, store, edge_map);
 
-        std::vector<json> dep_items_new;
-        for (const auto [k, v] : edge_map) {
-            if (v.generates_drv) {
-                std::string attr = k->outputs_.front()->path();
-                std::replace(attr.begin(), attr.end(), '/', '_');
-                std::replace(attr.begin(), attr.end(), '.', '_');
-                dep_items_new.push_back({ { attr, v.derivation_store_path } });
-            }
+        const Node* node = state.LookupNode(target);
+
+        if (node == nullptr) {
+            // No such target in the loaded build graph.
+            // TODO: error
+            return 1;
         }
 
-        std::vector<json> standard_items_new;
-        for (const auto [k, v] : edge_map) {
-            if (!v.generates_drv) {
-                std::string attr = k->outputs_.front()->path();
-                std::replace(attr.begin(), attr.end(), '/', '_');
-                std::replace(attr.begin(), attr.end(), '.', '_');
-                standard_items_new.push_back({ { attr, v.derivation_store_path } });
-            }
+        const Edge* target_edge = node->in_edge();
+
+        if (target_edge == nullptr) {
+            // The target is a source file or has no producing build edge.
+            // TODO: Error
+            return 1;
         }
 
-        // Construct Inja data.
-        json data = {
-            { "standardItems", standard_items_new },
-            { "depItems", dep_items_new },
-            { "target", target }
-        };
-
-        inja::Environment env;
-
-        std::cout << env.render(nixja_gen_template, data);
+        std::cout << edge_map[target_edge].derivation_path;
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';
