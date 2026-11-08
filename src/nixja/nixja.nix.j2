@@ -25,14 +25,10 @@
 				requiredSystemFeatures = ["recursive-nix"];
 
 				buildPhase = ''
-					{# echo "[NIXJA]" #}
-					{# cat derivation.nix #}
 					NIXJA_GEN=$(./nixja-gen {{ target }})
 				'';
 
 				installPhase = ''
-					# nixja-gen prints the path of the derivation it has already
-					# written. Copy its contents so $out is itself a valid .drv file.
 					cp "$NIXJA_GEN" "$out"
 				'';
 			}).outPath
