@@ -227,27 +227,6 @@ void build_items(
     }
 }
 
-void process_dep_edge(
-    const Edge* edge,
-    const std::string& command,
-    /// Outputs buildPhase
-    std::string& buildPhase,
-    /// Outputs installPhase
-    std::string& installPhase) {
-    /// String passed to `nixja-scan-deps -o`
-    std::string outputs_str;
-    for (const auto& output : edge->outputs_)
-        outputs_str += output->path();
-
-    const std::string nixja_scan_deps = fmt::format("./nixja-scan-deps -i TODO -o {} -- {}", outputs_str, command);
-
-    // This is the scanning stage, not the compilation stage.  Its output is
-    // the derivation emitted by nixja-scan-deps; the derivation itself builds
-    // the object files once Nix resolves the dynamic output.
-    installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
-    buildPhase = std::format(R"NIXJA(NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA", nixja_scan_deps);
-}
-
 void process_standard_edge(
     const Edge* edge,
     const std::string& command,
@@ -262,7 +241,7 @@ void process_standard_edge(
     }
 }
 
-Result<void> process_edge(
+Result<void> process_dep_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
@@ -297,7 +276,23 @@ Result<void> process_edge(
     std::string buildPhase;
     std::string installPhase;
     if (has_depfile(command)) {
-        process_dep_edge(edge, command, buildPhase, installPhase);
+        /// String passed to `nixja-scan-deps -o`
+        std::string outputs_str;
+        for (const auto& output : edge->outputs_)
+            outputs_str += output->path();
+
+        const std::string nixja_scan_deps = fmt::format(
+            "./nixja-scan-deps -i TODO -o {} -- {}",
+            outputs_str,
+            command);
+
+        // This is the scanning stage, not the compilation stage. Its output
+        // is the derivation emitted by nixja-scan-deps; the derivation itself
+        // builds the object files once Nix resolves the dynamic output.
+        installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
+        buildPhase = std::format(
+            R"NIXJA(NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA",
+            nixja_scan_deps);
     } else {
         process_standard_edge(edge, command, buildPhase, installPhase);
     }
@@ -500,7 +495,7 @@ void topo_process(
         const auto edge = queue.front();
         queue.pop();
 
-        const auto result = process_edge(edge, source_store_path, store, edge_map);
+        const auto result = process_dep_edge(edge, source_store_path, store, edge_map);
         if (!result.has_value())
             return;
 
