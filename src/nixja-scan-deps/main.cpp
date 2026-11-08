@@ -95,22 +95,20 @@ parse_makefile(std::string makefile_content) {
 std::unordered_set<std::string>
 local_dependencies(
     const std::unordered_set<std::string>& dependencies) {
-    fs::path source_root = fs::canonical(fs::current_path());
+    const fs::path source_root = fs::current_path();
 
     std::unordered_set<std::string> local;
 
     for (const auto& dependency : dependencies) {
-        fs::path path(dependency);
-
-        fs::path resolved = fs::weakly_canonical(
-            path.is_absolute() ? path : source_root / path);
-
-        auto relative = resolved.lexically_relative(source_root);
+        const fs::path path(dependency);
+        const fs::path relative = path.is_absolute()
+            ? path.lexically_relative(source_root)
+            : path.lexically_normal();
 
         if (relative.empty() || relative.is_absolute())
             continue;
 
-        if (*relative.begin() == "..")
+        if (relative.begin() != relative.end() && *relative.begin() == "..")
             continue;
 
         local.insert(relative.generic_string());
@@ -297,6 +295,7 @@ int main(int argc, char* argv[]) {
         { "buildPhase", command },
         { "installPhase", installPhase },
         { "outputs", "out" },
+        { "requiredSystemFeatures", "recursive-nix" },
         { "out", nix::hashPlaceholder("out") },
     };
 

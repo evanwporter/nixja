@@ -11,6 +11,9 @@ if(CCACHE_PROGRAM)
     set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
 endif()
 
+find_program(PATCHELF_PROGRAM patchelf REQUIRED)
+find_program(CHMOD_PROGRAM chmod REQUIRED)
+
 set(NINJA_BUILD_BINARY OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
@@ -91,11 +94,29 @@ add_custom_target(refresh-example-binaries ALL
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         "${FMT_SHARED_LIBRARY_REALPATH}"
         "${CMAKE_SOURCE_DIR}/example/${FMT_SHARED_LIBRARY_NAME}"
+    # Nix store files are read-only.  copy_if_different preserves that mode,
+    # while patchelf below needs to update the local copies in place.
+    COMMAND ${CHMOD_PROGRAM} u+w
+        "${CMAKE_SOURCE_DIR}/example/${NIX_STORE_SHARED_LIBRARY_NAME}"
+        "${CMAKE_SOURCE_DIR}/example/${NIX_UTIL_SHARED_LIBRARY_NAME}"
+        "${CMAKE_SOURCE_DIR}/example/${FMT_SHARED_LIBRARY_NAME}"
     COMMAND ${CMAKE_COMMAND} -E rm -f
         "${CMAKE_SOURCE_DIR}/example/${FMT_SHARED_LIBRARY_SONAME}"
     COMMAND ${CMAKE_COMMAND} -E create_symlink
         "${FMT_SHARED_LIBRARY_NAME}"
         "${CMAKE_SOURCE_DIR}/example/${FMT_SHARED_LIBRARY_SONAME}"
+    COMMAND ${PATCHELF_PROGRAM} --force-rpath --set-rpath "$ORIGIN"
+        "${CMAKE_SOURCE_DIR}/example/nixja-scan-deps"
+    COMMAND ${PATCHELF_PROGRAM} --force-rpath --set-rpath "$ORIGIN"
+        "${CMAKE_SOURCE_DIR}/example/${NIX_STORE_SHARED_LIBRARY_NAME}"
+    COMMAND ${PATCHELF_PROGRAM} --force-rpath --set-rpath "$ORIGIN"
+        "${CMAKE_SOURCE_DIR}/example/${NIX_UTIL_SHARED_LIBRARY_NAME}"
+    COMMAND ${PATCHELF_PROGRAM} --force-rpath --set-rpath "$ORIGIN"
+        "${CMAKE_SOURCE_DIR}/example/${FMT_SHARED_LIBRARY_NAME}"
+    COMMAND ${PATCHELF_PROGRAM} --replace-needed
+        "/nix/store/xrzzvmqkmx68f6yj1hy16gjvc1r2bmr8-sqlite-3.53.3/lib/libsqlite3.so"
+        "libsqlite3.so"
+        "${CMAKE_SOURCE_DIR}/example/${NIX_STORE_SHARED_LIBRARY_NAME}"
     DEPENDS nixja nixja-gen nixja-scan-deps
     VERBATIM
 )
