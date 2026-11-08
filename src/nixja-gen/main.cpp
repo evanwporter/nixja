@@ -350,11 +350,10 @@ Result<void> process_dep_edge(
 
     const std::string nixja_scan_deps = fmt::format("./nixja-scan-deps -i TODO -o {} -- {}", outputs_str, command);
 
-    std::string installPhase = "mkdir -p $out; ";
-    for (const auto output : outputs) {
-        installPhase += fmt::format(
-            "cp {} $out/{}; ", output->path(), fs::path(output->path()).filename().string());
-    }
+    // This is the scanning stage, not the compilation stage.  Its output is
+    // the derivation emitted by nixja-scan-deps; the derivation itself builds
+    // the object files once Nix resolves the dynamic output.
+    const std::string installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
 
     const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
     const char* buildPath = "/nix/store/g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
