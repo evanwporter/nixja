@@ -357,7 +357,7 @@ Result<void> process_dep_edge(
     }
 
     const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
-    const char* buildPath = "/nix/store/cj3il9qsgnh2msf8lzvgp2bmmmz91ppq-clang-tools-22.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
+    const char* buildPath = "/nix/store/g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
 
     std::string buildPhase = std::format(R"NIXJA(export NIXJA_BASH={}; export NIXJA_PATH={}; NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA", bashBuilder, buildPath, nixja_scan_deps);
 
@@ -376,7 +376,7 @@ Result<void> process_dep_edge(
              "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
              "m7bmd2qz1zcnk4k25y5cg6wbb3y9qwcb-coreutils-9.12.drv",
              "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
-             "i2c95d3micni8d6vp3sqh5wqkcz07711-clang-tools-22.1.8.drv",
+             "brhnnyyrbp1pm32spfb5yx9z9h01idyh-clang-tools-21.1.8.drv",
          }) {
         inputDrvs[derivation_path] = {
             { "dynamicOutputs", json::object() },
