@@ -30,53 +30,8 @@ let
         inherit installPhase;
     };
 
-    # The dynamically generated derivation for a single edge.
-    # TODO: we need to bring back the dependencies for implicit dependencies, 
-    # they are currently being passed to the jinja file, but they are unused
-    mkDepItem = {name, outputs, command}: builtins.outputOf (pkgs.stdenvNoCC.mkDerivation {
-        # This derivation's only output is the .drv generated at build time.
-        # Nix reserves the .drv suffix for precisely this kind of output.
-        name = "${name}.drv";
-
-        src = ./.;
-
-        buildPhase = let
-            outputs_str = "${builtins.concatStringsSep " " outputs}";
-        in ''
-            export NIXJA_BASH="${pkgs.bash}/bin/bash"
-            export NIXJA_PATH="${pkgs.coreutils}/bin:${pkgs.gcc}/bin"
-            NIXJA_SCAN_DEP_DRV="$(./nixja-scan-deps -i TODO -o ${outputs_str} -- ${command})"
-            echo $NIXJA_SCAN_DEP_DRV
-            {# cat derivation.nix #}
-        '';
-
-        installPhase = ''
-            # nix-instantiate prints the generated .drv path. copy its
-            # contents so that $out itself is a valid .drv file.
-            cp "$NIXJA_SCAN_DEP_DRV" "$out"
-        '';
-
-        __contentAddressed = true;
-        outputHashMode = "text";
-        outputHashAlgo = "sha256";
-
-        requiredSystemFeatures = [ "recursive-nix" ];
-
-        nativeBuildInputs = with pkgs; [
-            clang-tools
-            gcc
-            nix
-            ninja
-        ];
-
-        dontFixup = true;
-    }).outPath "out";
-
 {% for item in depItems  %}
     {% for attr, drv_path in item %}
-    # The first output is a text-addressed .drv produced by the scanner.  Ask
-    # for its out output as well, which is the directory containing the
-    # compiled edge outputs.
     {{attr}} = builtins.outputOf (builtins.outputOf (builtins.storePath "{{drv_path}}") "out") "out";
     {% endfor %}
 {% endfor %}
