@@ -297,6 +297,7 @@ int main(int argc, char* argv[]) {
         { "buildPhase", command },
         { "installPhase", installPhase },
         { "outputs", "out" },
+        { "requiredSystemFeatures", "recursive-nix" },
         { "out", nix::hashPlaceholder("out") },
     };
 

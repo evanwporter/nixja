@@ -364,6 +364,8 @@ Result<void> process_dep_edge(
     std::vector<std::string> inputSrcs;
     inputSrcs.push_back(
         fs::path(source_store_path).filename().string());
+    inputSrcs.push_back(
+        "g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8");
 
     // inputSrcs.reserve(store_paths.size() + 1);
     // for (const auto& [dependency, storePath] : store_paths)
@@ -376,7 +378,6 @@ Result<void> process_dep_edge(
              "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
              "m7bmd2qz1zcnk4k25y5cg6wbb3y9qwcb-coreutils-9.12.drv",
              "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
-             "brhnnyyrbp1pm32spfb5yx9z9h01idyh-clang-tools-21.1.8.drv",
          }) {
         inputDrvs[derivation_path] = {
             { "dynamicOutputs", json::object() },
@@ -430,6 +431,7 @@ Result<void> process_dep_edge(
         { "buildPhase", buildPhase },
         { "installPhase", installPhase },
         { "outputs", "out" },
+        { "requiredSystemFeatures", "recursive-nix" },
         { "out", nix::hashPlaceholder("out") },
     };
 
