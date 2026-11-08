@@ -40,6 +40,7 @@ using json = nlohmann::json;
 template <typename T, typename E = std::string>
 using Result = std::expected<T, E>;
 
+// TODO: Clarify how each field is used
 struct Derivation {
 
     // const nix::StorePath wrapper_drv =
@@ -69,25 +70,6 @@ struct Derivation {
     /// generated_path. Otherwise this comes from the output of derivation_path.
     std::string output_path;
 };
-
-// TODO: I don't think this is used here
-//
-/// Execute shell command and capture stdout
-// Source - https://stackoverflow.com/a/478960
-// Posted by waqas, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-10-31, License - CC BY-SA 4.0
-std::string exec(const char* cmd) {
-    std::array<char, 128> buffer;
-    std::string result;
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
-    }
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
-        result += buffer.data();
-    }
-    return result;
-}
 
 std::string command_for(
     const Edge* edge,
@@ -263,14 +245,6 @@ Result<void> process_dep_edge(
         "ln -s {}/lib*.so* \"$NIX_BUILD_TOP/\"; ",
         source_store_path);
 
-    // for (const auto [dep, store_path] : store_paths) {
-    //     const fs::path parent = fs::path(dep).parent_path();
-    //     if (!parent.empty())
-    //         linkPhase += fmt::format(
-    //             "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
-    //     linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
-    // };
-
     const auto outputs = edge->outputs_;
 
     const auto nodes = edge->outputs_;
@@ -393,8 +367,6 @@ Result<void> process_dep_edge(
         { "outputs", outputsJson },
     };
 
-    std::cerr << drv << std::endl;
-
     const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
     const auto drv_path = store->writeDerivation(derivation);
     const auto generated_drv_path = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, "out");
@@ -491,7 +463,7 @@ void topo_process(
 
     const std::string source_store_path = store->printStorePath(stored);
 
-    std::cerr << "SOURCE STORE PATH " << source_store_path << std::endl;
+    // std::cerr << "SOURCE STORE PATH " << source_store_path << std::endl;
 
     while (!queue.empty()) {
         const auto edge = queue.front();
