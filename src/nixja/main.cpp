@@ -18,6 +18,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common.hpp"
+
 namespace fs = std::filesystem;
 using json = nlohmann::json;
 
@@ -49,6 +51,7 @@ void run_command(const std::vector<std::string>& args) {
         throw std::runtime_error("Command failed: " + args[0]);
 }
 
+// TODO: Split up into outer and inner derivation generation
 // TODO: name == target
 // TODO: Like 90% of this is copied from nixja-gen, so we need to create a common function
 std::string build_drv_file(const std::string name) {
@@ -94,9 +97,7 @@ std::string build_drv_file(const std::string name) {
     // This output is itself a derivation. A downstream derivation declares it
     // as a dynamic input, so Nix resolves and builds it in the same graph.
     const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
-    const std::string buildPhase = std::format(
-        R"NIXJA(NIXJA_GEN=$({}); echo $NIXJA_GEN; )NIXJA",
-        command);
+    const std::string buildPhase = std::format(R"NIXJA(NIXJA_GEN=$({}); echo $NIXJA_GEN; )NIXJA", command);
 
     const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
     const char* buildPath = "/nix/store/g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
@@ -119,49 +120,19 @@ std::string build_drv_file(const std::string name) {
         };
     }
 
-    const json inputsJson = {
-        { "srcs", inputSrcs },
-        // TODO: Replace with values from the toolchain file.
-        { "drvs", inputDrvs },
-    };
-
-    const json derivationEnv = {
-        { "name", generatorName },
-        { "PATH", buildPath },
-        { "NIXJA_PATH", buildPath },
-        { "NIXJA_BASH", bashBuilder },
-        { "linkPhase", linkPhase },
-        // BUG: Ensure every parent directory of an output is created in buildPhase.
-        { "buildPhase", buildPhase },
-        { "installPhase", installPhase },
-        { "outputs", "out" },
-        { "requiredSystemFeatures", "recursive-nix" },
-        { "out", nix::hashPlaceholder("out") },
-    };
-
-    const json outputsJson = {
-        { "out", {
-                     // The generated .drv text embeds store-path references.
-                     // `flat` outputs may not have references; `text` records
-                     // and permits them as part of the content address.
-                     { "method", "text" },
-                     { "hashAlgo", "sha256" },
-                 } },
-    };
-
-    const json drv = {
-        { "name", generatorName },
-        { "system", "x86_64-linux" },
-        { "builder", bashBuilder },
-        { "version", 4u },
-        { "args", json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }) },
-        { "env", derivationEnv },
-        { "inputs", inputsJson },
-        { "outputs", outputsJson },
-    };
-
-    const auto generator = nix::Derivation::parseJsonAndValidate(*store, drv);
-    const auto generator_drv_path = store->writeDerivation(generator);
+    const auto generator_drv_path = writeDerivation(store, {
+                                                               .name = generatorName,
+                                                               .system = "x86_64-linux",
+                                                               .builder = bashBuilder,
+                                                               .path = buildPath,
+                                                               .linkPhase = linkPhase,
+                                                               .buildPhase = buildPhase,
+                                                               .installPhase = installPhase,
+                                                               .outputMethod = "text",
+                                                               .inputSrcs = inputSrcs,
+                                                               .inputDrvs = inputDrvs,
+                                                               .extraEnv = json::object(),
+                                                           });
 
     const auto generated_drv = nix::DownstreamPlaceholder::unknownCaOutput(generator_drv_path, "out");
     const auto generated_output = nix::DownstreamPlaceholder::unknownDerivation(generated_drv, "out");
@@ -189,33 +160,21 @@ std::string build_drv_file(const std::string name) {
                                                                  } },
     };
 
-    const json finalDrv = {
-        { "name", derivationName },
-        { "system", "x86_64-linux" },
-        { "builder", bashBuilder },
-        { "version", 4u },
-        { "args", json::array({ "-e", "-c", "cp -r \"$input\" \"$out\"" }) },
-        { "env", {
-                     { "name", derivationName },
-                     { "PATH", "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin" },
-                     { "input", generated_output.render() },
-                     { "out", nix::hashPlaceholder("out") },
-                     { "outputs", "out" },
-                 } },
-        { "inputs", {
-                        { "srcs", json::array() },
-                        { "drvs", finalInputDrvs },
-                    } },
-        { "outputs", {
-                         { "out", {
-                                      { "method", "nar" },
-                                      { "hashAlgo", "sha256" },
-                                  } },
-                     } },
-    };
-
-    const auto finalDerivation = nix::Derivation::parseJsonAndValidate(*store, finalDrv);
-    const auto finalDrvPath = store->writeDerivation(finalDerivation);
+    const auto finalDrvPath = writeDerivation(store, {
+                                                         .name = derivationName,
+                                                         .system = "x86_64-linux",
+                                                         .builder = bashBuilder,
+                                                         .path = "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin",
+                                                         .linkPhase = "",
+                                                         .buildPhase = "",
+                                                         .installPhase = "cp -r \"$input\" \"$out\"",
+                                                         .outputMethod = "nar",
+                                                         .inputSrcs = json::array(),
+                                                         .inputDrvs = finalInputDrvs,
+                                                         .extraEnv = {
+                                                             { "input", generated_output.render() },
+                                                         },
+                                                     });
     return std::string(finalDrvPath.to_string());
 }
 

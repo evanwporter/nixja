@@ -25,6 +25,8 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
+#include "common.hpp"
+
 namespace fs = std::filesystem;
 
 using json = nlohmann::json;
@@ -225,15 +227,6 @@ int main(int argc, char* argv[]) {
                   << store->printStorePath(stored) << '\n';
     }
 
-    // TODO: Use the toolchain file
-    //
-    // std::ifstream toolchain_file("toolchain.json");
-    //
-    // if (!toolchain_file.is_open())
-    //     return 1;
-    //
-    // const auto toolchain = json::parse(toolchain_file);
-
     std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
     for (const auto [dep, store_path] : store_paths) {
         const fs::path parent = fs::path(dep).parent_path();
@@ -281,44 +274,21 @@ int main(int argc, char* argv[]) {
           } },
     };
 
-    const json inputsJson = {
-        { "srcs", inputSrcs },
-        // TODO: Replace with values from the toolchain file.
-        { "drvs", inputDrvs },
-    };
-
-    const json derivationEnv = {
-        { "name", "src_main_o" },
-        { "PATH", buildPath },
-        { "linkPhase", linkPhase },
-        // BUG: Ensure every parent directory of an output is created in buildPhase.
-        { "buildPhase", command },
-        { "installPhase", installPhase },
-        { "outputs", "out" },
-        { "requiredSystemFeatures", "recursive-nix" },
-        { "out", nix::hashPlaceholder("out") },
-    };
-
-    const json outputsJson = {
-        { "out", {
-                     { "method", "nar" },
-                     { "hashAlgo", "sha256" },
-                 } },
-    };
-
-    const json drv = {
-        { "name", name },
-        { "system", "x86_64-linux" },
-        { "builder", bashBuilder },
-        { "version", 4u },
-        { "args", json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }) },
-        { "env", derivationEnv },
-        { "inputs", inputsJson },
-        { "outputs", outputsJson },
-    };
-
-    const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
-    const auto path = store->writeDerivation(derivation);
+    const auto path = writeDerivation(store, {
+        .name = name,
+        .system = "x86_64-linux",
+        .builder = bashBuilder,
+        .path = buildPath,
+        .linkPhase = linkPhase,
+        .buildPhase = command,
+        .installPhase = installPhase,
+        .outputMethod = "nar",
+        .inputSrcs = inputSrcs,
+        .inputDrvs = inputDrvs,
+        .extraEnv = json::object(),
+    });
 
     std::cout << "/nix/store/" << path.to_string() << std::endl;
 }
+
+// name, system, buildPath, linkPhase, buildPhase, bashBuilder, installPhase, derivationEnv, inputsJson, outputs.out.method == "nar" | "text", inputDrvs

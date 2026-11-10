@@ -29,6 +29,7 @@
 #include "graph.h"
 #include "manifest_parser.h"
 #include "state.h"
+#include "common.hpp"
 
 namespace fs = std::filesystem;
 
@@ -116,17 +117,10 @@ bool has_depfile(const std::string& command) {
 // TODO: Combine the next two functions into one simpler one
 // The only difference is how it forms the dep list
 
-struct DerivationSpec {
-    std::string name;
-    std::string buildPhase;
-    std::string installPhase;
-    std::string outputMethod;
-    bool generates_drv;
-};
-
 Result<void> create_derivation(
     const Edge* edge,
     const DerivationSpec& spec,
+    const bool generates_drv,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
     std::unordered_map<const Edge*, Derivation>& edge_map) {
@@ -213,51 +207,18 @@ Result<void> create_derivation(
         }
     }
 
-    // Construct inputs JSON.
-    const json inputsJson = {
-        { "srcs", inputSrcs },
-        // TODO: Replace with values from the toolchain file.
-        { "drvs", inputDrvs },
+    auto completeSpec = spec;
+    completeSpec.system = "x86_64-linux";
+    completeSpec.builder = bashBuilder;
+    completeSpec.path = buildPath;
+    completeSpec.linkPhase = linkPhase;
+    completeSpec.inputSrcs = inputSrcs;
+    completeSpec.inputDrvs = inputDrvs;
+    completeSpec.extraEnv = {
+            { "NIXJA_PATH", buildPath },
+            { "NIXJA_BASH", bashBuilder },
     };
-
-    // Construct derivation environment.
-    const json derivationEnv = {
-        { "name", spec.name },
-        { "PATH", buildPath },
-        { "NIXJA_PATH", buildPath },
-        { "NIXJA_BASH", bashBuilder },
-        { "linkPhase", linkPhase },
-        // BUG: Ensure every parent directory of an output is created in buildPhase.
-        { "buildPhase", spec.buildPhase },
-        { "installPhase", spec.installPhase },
-        { "outputs", "out" },
-        { "requiredSystemFeatures", "recursive-nix" },
-        { "out", nix::hashPlaceholder("out") },
-    };
-
-    // Construct outputs JSON.
-    const json outputsJson = {
-        { "out", {
-                     { "method", spec.outputMethod },
-                     { "hashAlgo", "sha256" },
-                 } },
-    };
-
-    // Construct derivation JSON.
-    const json drv = {
-        { "name", spec.name },
-        { "system", "x86_64-linux" },
-        { "builder", bashBuilder },
-        { "version", 4u },
-        { "args", json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }) },
-        { "env", derivationEnv },
-        { "inputs", inputsJson },
-        { "outputs", outputsJson },
-    };
-
-    // Write derivation to the Nix store.
-    const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
-    const auto drv_path = store->writeDerivation(derivation);
+    const auto drv_path = writeDerivation(store, completeSpec);
 
     // Resolve output paths.
     std::string generated_path;
@@ -265,7 +226,7 @@ Result<void> create_derivation(
 
     const auto ca_output = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, "out");
 
-    if (spec.generates_drv) {
+    if (generates_drv) {
         generated_path = ca_output.render();
 
         output_path = nix::DownstreamPlaceholder::unknownDerivation(
@@ -277,7 +238,7 @@ Result<void> create_derivation(
 
     // Record derivation.
     edge_map[edge] = Derivation {
-        .generates_drv = spec.generates_drv,
+        .generates_drv = generates_drv,
         .derivation_path = std::string(drv_path.to_string()),
         .derivation_store_path = store->printStorePath(drv_path),
         .generated_path = generated_path,
@@ -324,12 +285,12 @@ Result<void> process_standard_edge(
         .buildPhase = buildPhase,
         .installPhase = installPhase,
         .outputMethod = "nar",
-        .generates_drv = false,
     };
 
     return create_derivation(
         edge,
         spec,
+        false,
         source_store_path,
         store,
         edge_map);
@@ -385,12 +346,12 @@ Result<void> process_dep_edge(
         .buildPhase = buildPhase,
         .installPhase = installPhase,
         .outputMethod = "text",
-        .generates_drv = true,
     };
 
     return create_derivation(
         edge,
         spec,
+        true,
         source_store_path,
         store,
         edge_map);

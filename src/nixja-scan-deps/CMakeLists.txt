@@ -1,6 +1,7 @@
 add_executable(nixja-scan-deps ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
 
 target_link_libraries(nixja-scan-deps PRIVATE
+    nixja-common
     nlohmann_json::nlohmann_json
     PkgConfig::NIX_STORE
 )
