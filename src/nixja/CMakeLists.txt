@@ -1,16 +1,7 @@
 add_executable(nixja ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
 
-file(READ
-    "${CMAKE_CURRENT_SOURCE_DIR}/nixja.nix.j2"
-    NIXJA_TEMPLATE
-)
-
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/nixja.hpp.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/nixja.hpp"
-    @ONLY
-)
-
-target_include_directories(nixja PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR}
+target_link_libraries(nixja PUBLIC
+    fmt::fmt
+    PkgConfig::NIX_STORE
+    nlohmann_json::nlohmann_json
 )

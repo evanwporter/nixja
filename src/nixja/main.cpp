@@ -1,17 +1,22 @@
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
-#include <inja/inja.hpp>
+#include <fmt/format.h>
 #include <nlohmann/json.hpp>
+
+#include <nix/main/shared.hh>
+#include <nix/store/derivations.hh>
+#include <nix/store/globals.hh>
+#include <nix/store/store-api.hh>
+#include <nix/store/store-dir-config.hh>
+#include <nix/store/store-open.hh>
+#include <nix/util/posix-source-accessor.hh>
 
 #include <sys/wait.h>
 #include <unistd.h>
-
-#include "nixja.hpp"
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -44,6 +49,117 @@ void run_command(const std::vector<std::string>& args) {
         throw std::runtime_error("Command failed: " + args[0]);
 }
 
+// TODO: name == target
+// TODO: Like 90% of this is copied from nixja-gen, so we need to create a common function
+std::string build_drv_file(const std::string name) {
+    nix::experimentalFeatureSettings.experimentalFeatures.set(
+        "ca-derivations dynamic-derivations");
+    nix::initLibStore(true);
+    const nix::ref<nix::Store> store = nix::openStore();
+
+    const fs::path project_root = fs::canonical(fs::current_path());
+    // Keep the complete project tree together.  The builder mounts this one
+    // store path at $NIX_BUILD_TOP/source rather than recreating selected
+    // files and directories individually.
+    nix::PathFilter whole_project = [](const std::string&) {
+        return true;
+    };
+
+    const auto stored = store->addToStore(
+        "source",
+        nix::PosixSourceAccessor::createAtRoot(project_root),
+        nix::ContentAddressMethod::Raw::NixArchive,
+        nix::HashAlgorithm::SHA256,
+        { },
+        whole_project);
+
+    const std::string source_store_path = store->printStorePath(stored);
+
+    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
+    linkPhase += fmt::format(
+        "ln -s {} \"$NIX_BUILD_TOP/source\"; ",
+        source_store_path);
+
+    const std::string derivationName = name;
+
+    const std::string command = fmt::format("cd source && ./nixja-gen {}", name);
+
+    // This is the scanning stage, not the compilation stage. Its output
+    // is the derivation emitted by nixja-scan-deps; the derivation itself
+    // builds the object files once Nix resolves the dynamic output.
+    const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
+    const std::string buildPhase = std::format(
+        R"NIXJA(NIXJA_GEN=$({}); echo $NIXJA_GEN; )NIXJA",
+        command);
+
+    const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
+    const char* buildPath = "/nix/store/g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
+
+    std::vector<std::string> inputSrcs;
+    inputSrcs.push_back(
+        fs::path(source_store_path).filename().string());
+    inputSrcs.push_back(
+        "g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8");
+
+    json inputDrvs = json::object();
+    for (const char* derivation_path : {
+             "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
+             "m7bmd2qz1zcnk4k25y5cg6wbb3y9qwcb-coreutils-9.12.drv",
+             "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
+         }) {
+        inputDrvs[derivation_path] = {
+            { "dynamicOutputs", json::object() },
+            { "outputs", json::array({ "out" }) },
+        };
+    }
+
+    const json inputsJson = {
+        { "srcs", inputSrcs },
+        // TODO: Replace with values from the toolchain file.
+        { "drvs", inputDrvs },
+    };
+
+    const json derivationEnv = {
+        { "name", derivationName },
+        { "PATH", buildPath },
+        { "NIXJA_PATH", buildPath },
+        { "NIXJA_BASH", bashBuilder },
+        { "linkPhase", linkPhase },
+        // BUG: Ensure every parent directory of an output is created in buildPhase.
+        { "buildPhase", buildPhase },
+        { "installPhase", installPhase },
+        { "outputs", "out" },
+        { "requiredSystemFeatures", "recursive-nix" },
+        { "out", nix::hashPlaceholder("out") },
+    };
+
+    const json outputsJson = {
+        { "out", {
+                     // The generated .drv text embeds store-path references.
+                     // `flat` outputs may not have references; `text` records
+                     // and permits them as part of the content address.
+                     { "method", "text" },
+                     { "hashAlgo", "sha256" },
+                 } },
+    };
+
+    const json drv = {
+        { "name", derivationName },
+        { "system", "x86_64-linux" },
+        { "builder", bashBuilder },
+        { "version", 4u },
+        { "args", json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }) },
+        { "env", derivationEnv },
+        { "inputs", inputsJson },
+        { "outputs", outputsJson },
+    };
+
+    const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
+    const auto drv_path = store->writeDerivation(derivation);
+
+    return std::string(drv_path.to_string());
+}
+
 // TODO: allow specifying a store that's not /nix/store
 // TODO: Test if I can run this in a standard nix derivation as if it was ninja or something
 // TODO: Add the -C arg like ninja -C build
@@ -54,36 +170,15 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        std::string target = argv[1];
+        const std::string target = argv[1];
 
-        fs::path output_path = fs::current_path() / "ninja.nix";
-
-        // Render embedded template.
-        inja::Environment env;
-
-        json data = {
-            { "target", target }
-        };
-
-        // TODO: see if inja supports creating the file directly
-
-        const std::string rendered = env.render(nixja_template, data);
-
-        // Write generated Nix file.
-        {
-            std::ofstream output(output_path);
-
-            if (!output)
-                throw std::runtime_error("Could not open output file");
-
-            output << rendered;
-        }
+        const auto drv_path = build_drv_file(target);
 
         // Build generated Nix expression.
         // TODO: don't use nix-build (so we don't have to require recursive-nix in parent drv)
         // to solve this I might need to steal stuff from nix-ninja
         // TODO: use NIXPATH to obtain `pkgs`
-        run_command({ "nix-build", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "-E", "import " + output_path.string() + " { pkgs = import <nixpkgs> {}; }" });
+        run_command({ "nix-build", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "/nix/store/" + drv_path });
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';
