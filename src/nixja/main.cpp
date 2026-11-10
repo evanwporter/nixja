@@ -80,6 +80,10 @@ std::string build_drv_file(const std::string name) {
         "ln -s {} \"$NIX_BUILD_TOP/source\"; ",
         source_store_path);
 
+    // A dynamic derivation output is parsed by Nix as a store derivation, so
+    // its store-path name must carry the `.drv` suffix.  The outer result
+    // derivation keeps the user-facing target name.
+    const std::string generatorName = name + ".drv";
     const std::string derivationName = name;
 
     const std::string command = fmt::format("cd source && ./nixja-gen {}", name);
@@ -87,6 +91,8 @@ std::string build_drv_file(const std::string name) {
     // This is the scanning stage, not the compilation stage. Its output
     // is the derivation emitted by nixja-scan-deps; the derivation itself
     // builds the object files once Nix resolves the dynamic output.
+    // This output is itself a derivation. A downstream derivation declares it
+    // as a dynamic input, so Nix resolves and builds it in the same graph.
     const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
     const std::string buildPhase = std::format(
         R"NIXJA(NIXJA_GEN=$({}); echo $NIXJA_GEN; )NIXJA",
@@ -120,7 +126,7 @@ std::string build_drv_file(const std::string name) {
     };
 
     const json derivationEnv = {
-        { "name", derivationName },
+        { "name", generatorName },
         { "PATH", buildPath },
         { "NIXJA_PATH", buildPath },
         { "NIXJA_BASH", bashBuilder },
@@ -144,7 +150,7 @@ std::string build_drv_file(const std::string name) {
     };
 
     const json drv = {
-        { "name", derivationName },
+        { "name", generatorName },
         { "system", "x86_64-linux" },
         { "builder", bashBuilder },
         { "version", 4u },
@@ -154,10 +160,63 @@ std::string build_drv_file(const std::string name) {
         { "outputs", outputsJson },
     };
 
-    const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
-    const auto drv_path = store->writeDerivation(derivation);
+    const auto generator = nix::Derivation::parseJsonAndValidate(*store, drv);
+    const auto generator_drv_path = store->writeDerivation(generator);
 
-    return std::string(drv_path.to_string());
+    const auto generated_drv = nix::DownstreamPlaceholder::unknownCaOutput(generator_drv_path, "out");
+    const auto generated_output = nix::DownstreamPlaceholder::unknownDerivation(generated_drv, "out");
+
+    // This is the top-level derivation requested by nix-build. Its input is
+    // the output of the derivation emitted by `generator`, not merely the
+    // generator's output file.
+    const json finalInputDrvs = {
+        { std::string(generator_drv_path.to_string()), {
+                                                           { "dynamicOutputs", {
+                                                                                   { "out", {
+                                                                                                { "dynamicOutputs", json::object() },
+                                                                                                { "outputs", json::array({ "out" }) },
+                                                                                            } },
+                                                                               } },
+                                                           { "outputs", json::array({ "out" }) },
+                                                       } },
+        { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv", {
+                                                                  { "dynamicOutputs", json::object() },
+                                                                  { "outputs", json::array({ "out" }) },
+                                                              } },
+        { "m7bmd2qz1zcnk4k25y5cg6wbb3y9qwcb-coreutils-9.12.drv", {
+                                                                     { "dynamicOutputs", json::object() },
+                                                                     { "outputs", json::array({ "out" }) },
+                                                                 } },
+    };
+
+    const json finalDrv = {
+        { "name", derivationName },
+        { "system", "x86_64-linux" },
+        { "builder", bashBuilder },
+        { "version", 4u },
+        { "args", json::array({ "-e", "-c", "cp -r \"$input\" \"$out\"" }) },
+        { "env", {
+                     { "name", derivationName },
+                     { "PATH", "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin" },
+                     { "input", generated_output.render() },
+                     { "out", nix::hashPlaceholder("out") },
+                     { "outputs", "out" },
+                 } },
+        { "inputs", {
+                        { "srcs", json::array() },
+                        { "drvs", finalInputDrvs },
+                    } },
+        { "outputs", {
+                         { "out", {
+                                      { "method", "nar" },
+                                      { "hashAlgo", "sha256" },
+                                  } },
+                     } },
+    };
+
+    const auto finalDerivation = nix::Derivation::parseJsonAndValidate(*store, finalDrv);
+    const auto finalDrvPath = store->writeDerivation(finalDerivation);
+    return std::string(finalDrvPath.to_string());
 }
 
 // TODO: allow specifying a store that's not /nix/store
@@ -174,11 +233,12 @@ int main(int argc, char* argv[]) {
 
         const auto drv_path = build_drv_file(target);
 
-        // Build generated Nix expression.
+        // Building this one derivation causes Nix to resolve the generator's
+        // dynamic output and build the derivation it emits.
         // TODO: don't use nix-build (so we don't have to require recursive-nix in parent drv)
         // to solve this I might need to steal stuff from nix-ninja
         // TODO: use NIXPATH to obtain `pkgs`
-        run_command({ "nix-build", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "/nix/store/" + drv_path });
+        run_command({ "nix-build", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", "/nix/store/" + drv_path });
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';
