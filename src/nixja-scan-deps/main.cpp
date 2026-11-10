@@ -1,6 +1,5 @@
 #include <array>
 #include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <regex>
@@ -125,8 +124,7 @@ local_dependencies(
 std::unordered_set<std::string>
 scan_dependencies(const std::string command) {
     // Run clang-scan-deps.
-    const std::string scan_command =
-        std::string(toolchain::clang_scan_deps) + " -- " + command;
+    const std::string scan_command = std::string(toolchain::clang_scan_deps) + " -- " + command;
 
     const std::string output = exec(scan_command.c_str());
 
@@ -244,44 +242,32 @@ int main(int argc, char* argv[]) {
             "cp {} $out/{}; ", output, fs::path(output).filename().string());
     }
 
-    const char* bashBuilder = std::getenv("NIXJA_BASH");
-    if (bashBuilder == nullptr) {
-        std::cerr << "NIXJA_BASH is not set; cannot determine derivation builder";
-        return 1;
-    }
-
-    const char* buildPath = std::getenv("NIXJA_PATH");
-    if (buildPath == nullptr) {
-        std::cerr << "NIXJA_PATH is not set; cannot determine build PATH";
-        return 1;
-    }
+    const char* bashBuilder = toolchain::bash;
+    const char* buildPath = toolchain::build_path;
 
     std::vector<std::string> inputSrcs;
-    inputSrcs.reserve(store_paths.size() + 1);
+    inputSrcs.reserve(store_paths.size() + 3);
     for (const auto& [dependency, storePath] : store_paths)
         inputSrcs.push_back(fs::path(storePath).filename().string());
-    inputSrcs.push_back(
-        fs::path(bashBuilder).parent_path().parent_path().filename().string());
+    inputSrcs.push_back(toolchain::bash_store_name);
     inputSrcs.push_back(toolchain::coreutils_store_name);
     inputSrcs.push_back(toolchain::cc_store_name);
 
     const json inputDrvs = json::object();
 
     const auto path = writeDerivation(store, {
-        .name = name,
-        .system = "x86_64-linux",
-        .builder = bashBuilder,
-        .path = buildPath,
-        .linkPhase = linkPhase,
-        .buildPhase = command,
-        .installPhase = installPhase,
-        .outputMethod = "nar",
-        .inputSrcs = inputSrcs,
-        .inputDrvs = inputDrvs,
-        .extraEnv = json::object(),
-    });
+                                                 .name = name,
+                                                 .system = "x86_64-linux",
+                                                 .builder = bashBuilder,
+                                                 .path = buildPath,
+                                                 .linkPhase = linkPhase,
+                                                 .buildPhase = command,
+                                                 .installPhase = installPhase,
+                                                 .outputMethod = "nar",
+                                                 .inputSrcs = inputSrcs,
+                                                 .inputDrvs = inputDrvs,
+                                                 .extraEnv = json::object(),
+                                             });
 
     std::cout << "/nix/store/" << path.to_string() << std::endl;
 }
-
-// name, system, buildPath, linkPhase, buildPhase, bashBuilder, installPhase, derivationEnv, inputsJson, outputs.out.method == "nar" | "text", inputDrvs
