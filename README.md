@@ -32,7 +32,7 @@ The major downside, and why its not good for local builds is that every run we n
 
 10. Perhaps switch over to using stable? Nix C-API
 
-11. Perhaps rewrite in C99 using SAMU instead of NINJA
+11. Perhaps rewrite in C99 using SAMU instead of NINJA (unlikely)
 
 12. CMAKE -> MESON
 
