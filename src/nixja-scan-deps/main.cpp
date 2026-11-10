@@ -222,9 +222,6 @@ int main(int argc, char* argv[]) {
         store_paths.emplace(
             dependency,
             store->printStorePath(stored));
-
-        std::cerr << dependency << " -> "
-                  << store->printStorePath(stored) << '\n';
     }
 
     std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
