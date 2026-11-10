@@ -37,6 +37,7 @@
 
 					nativeBuildInputs = [
 						final.cmake
+						final.clang-tools
 						final.pkg-config
 					];
 
@@ -68,6 +69,7 @@
 
 					nativeBuildInputs = [
 						final.cmake
+						final.clang-tools
 						final.makeWrapper
 						final.pkg-config
 					];
@@ -85,7 +87,7 @@
 					];
 
 					cmakeFlags = [
-						"-DnixjaScanDeps=${final.nixja-scan-deps}"
+						"-DnixjaScanDeps=${final.nixja-scan-deps}/bin/nixja-scan-deps"
 					];
 
 					installPhase = ''
@@ -112,6 +114,7 @@
 
 					nativeBuildInputs = [
 						final.cmake
+						final.clang-tools
 						final.makeWrapper
 						final.pkg-config
 					];
@@ -129,7 +132,7 @@
 					];
 
 					cmakeFlags = [
-						"-DnixjaGen=${final.nixja-gen}"
+						"-DnixjaGen=${final.nixja-gen}/bin/nixja-gen"
 					];
 
 					installPhase = ''

@@ -91,7 +91,7 @@ std::string build_drv_file(const std::string name) {
     const std::string generatorName = name + ".drv";
     const std::string derivationName = name;
 
-    const std::string command = fmt::format("cd source && ./nixja-gen {}", name);
+    const std::string command = fmt::format("cd source && {} {}", toolchain::nixja_gen, name);
 
     // This is the scanning stage, not the compilation stage. Its output
     // is the derivation emitted by nixja-scan-deps; the derivation itself
@@ -112,6 +112,8 @@ std::string build_drv_file(const std::string name) {
     inputSrcs.push_back(toolchain::bash_store_name);
     inputSrcs.push_back(toolchain::coreutils_store_name);
     inputSrcs.push_back(toolchain::cc_store_name);
+    if (toolchain::nixja_gen_store_name[0] != '\0')
+        inputSrcs.push_back(toolchain::nixja_gen_store_name);
 
     // Libraries needed by nixja-gen
     inputSrcs.push_back(
@@ -153,26 +155,18 @@ std::string build_drv_file(const std::string name) {
                                                                                } },
                                                            { "outputs", json::array({ "out" }) },
                                                        } },
-        { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv", {
-                                                                  { "dynamicOutputs", json::object() },
-                                                                  { "outputs", json::array({ "out" }) },
-                                                              } },
-        { "m7bmd2qz1zcnk4k25y5cg6wbb3y9qwcb-coreutils-9.12.drv", {
-                                                                     { "dynamicOutputs", json::object() },
-                                                                     { "outputs", json::array({ "out" }) },
-                                                                 } },
     };
 
     const auto finalDrvPath = writeDerivation(store, {
                                                          .name = derivationName,
                                                          .system = "x86_64-linux",
                                                          .builder = bashBuilder,
-                                                         .path = "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin",
+                                                         .path = toolchain::coreutils_bin_dir,
                                                          .linkPhase = "",
                                                          .buildPhase = "",
                                                          .installPhase = "cp -r \"$input\" \"$out\"",
                                                          .outputMethod = "nar",
-                                                         .inputSrcs = json::array(),
+                                                         .inputSrcs = json::array({ toolchain::bash_store_name, toolchain::coreutils_store_name }),
                                                          .inputDrvs = finalInputDrvs,
                                                          .extraEnv = {
                                                              { "input", generated_output.render() },

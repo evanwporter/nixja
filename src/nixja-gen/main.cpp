@@ -143,6 +143,8 @@ void create_derivation(
     inputSrcs.push_back(toolchain::bash_store_name);
     inputSrcs.push_back(toolchain::coreutils_store_name);
     inputSrcs.push_back(toolchain::cc_store_name);
+    if (toolchain::nixja_scan_deps_store_name[0] != '\0')
+        inputSrcs.push_back(toolchain::nixja_scan_deps_store_name);
     inputSrcs.push_back(
         fs::path(toolchain::nix_store_package_path).filename().string());
     inputSrcs.push_back(
@@ -286,7 +288,8 @@ void process_dep_edge(
         outputs_str += output->path();
 
     const std::string nixja_scan_deps = fmt::format(
-        "./nixja-scan-deps -i TODO -o {} -- {}",
+        "{} -i TODO -o {} -- {}",
+        toolchain::nixja_scan_deps,
         outputs_str,
         command);
 
