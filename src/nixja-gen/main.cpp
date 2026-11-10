@@ -8,7 +8,6 @@
 #include <nix/store/downstream-placeholder.hh>
 #include <sstream>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -25,11 +24,11 @@
 #include <nix/store/store-open.hh>
 #include <nix/util/posix-source-accessor.hh>
 
+#include "common.hpp"
 #include "disk_interface.h"
 #include "graph.h"
 #include "manifest_parser.h"
 #include "state.h"
-#include "common.hpp"
 
 namespace fs = std::filesystem;
 
@@ -71,7 +70,7 @@ struct Derivation {
 
 std::string command_for(
     const Edge* edge,
-    const std::unordered_map<const Edge*, Derivation>& edge_map) {
+    const std::vector<Derivation>& edge_map) {
     std::string command = edge->EvaluateCommand();
 
     for (const Node* input : edge->inputs_) {
@@ -81,11 +80,7 @@ std::string command_for(
         if (producer == nullptr)
             continue;
 
-        const auto derivation = edge_map.find(producer);
-        if (derivation == edge_map.end())
-            continue;
-
-        const std::string nix_reference = derivation->second.output_path + "/" + path;
+        const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path;
 
         size_t pos = 0;
         while ((pos = command.find(path, pos)) != std::string::npos) {
@@ -123,7 +118,7 @@ Result<void> create_derivation(
     const bool generates_drv,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
-    std::unordered_map<const Edge*, Derivation>& edge_map) {
+    std::vector<Derivation>& edge_map) {
     // processing a edge means creating a drv file for it
 
     // Construct link phase.
@@ -175,17 +170,9 @@ Result<void> create_derivation(
     for (const auto node : edge->inputs_) {
         if (const Edge* producer = node->in_edge()) {
 
-            const auto derivation = edge_map.find(producer);
+            const auto& derivation = edge_map[producer->id_];
 
-            if (derivation == edge_map.end()) {
-                // TODO: Handle better
-                // TODO: Make this error more noticable
-                std::cerr << "This node is false for some reason\n";
-                // return std::unexpected("");
-                continue;
-            }
-
-            const json dynOutputs = derivation->second.generates_drv
+            const json dynOutputs = derivation.generates_drv
                 ? json::object({
                       { "out", {
                                    { "dynamicOutputs", json::object() },
@@ -194,7 +181,7 @@ Result<void> create_derivation(
                   })
                 : json::object();
 
-            inputDrvs[derivation->second.derivation_path] = {
+            inputDrvs[derivation.derivation_path] = {
                 { "dynamicOutputs", dynOutputs },
                 { "outputs", json::array({ "out" }) },
             };
@@ -215,8 +202,8 @@ Result<void> create_derivation(
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
     completeSpec.extraEnv = {
-            { "NIXJA_PATH", buildPath },
-            { "NIXJA_BASH", bashBuilder },
+        { "NIXJA_PATH", buildPath },
+        { "NIXJA_BASH", bashBuilder },
     };
     const auto drv_path = writeDerivation(store, completeSpec);
 
@@ -237,7 +224,7 @@ Result<void> create_derivation(
     }
 
     // Record derivation.
-    edge_map[edge] = Derivation {
+    edge_map[edge->id_] = Derivation {
         .generates_drv = generates_drv,
         .derivation_path = std::string(drv_path.to_string()),
         .derivation_store_path = store->printStorePath(drv_path),
@@ -252,7 +239,7 @@ Result<void> process_standard_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
-    std::unordered_map<const Edge*, Derivation>& edge_map) {
+    std::vector<Derivation>& edge_map) {
     // processing a edge means creating a drv file for it
 
     // Determine derivation name.
@@ -300,7 +287,7 @@ Result<void> process_dep_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
-    std::unordered_map<const Edge*, Derivation>& edge_map) {
+    std::vector<Derivation>& edge_map) {
 
     // Determine derivation name.
     const auto name = fs::path(edge->outputs_.front()->path()).filename().string();
@@ -362,23 +349,23 @@ Result<void> process_dep_edge(
 void topo_process(
     const State& state,
     const nix::ref<nix::Store> store,
-    std::unordered_map<const Edge*, Derivation>& edge_map) {
-    // TODO: Use vector instead of unordered_map
-
+    std::vector<Derivation>& edge_map) {
     /// The number of unprocessed dependencies for a give edge
-    std::unordered_map<const Edge*, size_t> indegree;
+    std::vector<size_t> indegree(state.edges_.size());
 
     /// Adjaceny list
     /// Maps each edge to all the edges that depend on it (waiting on this edge to be processed)
-    std::unordered_map<const Edge*, std::vector<const Edge*>> consumers;
+    std::vector<std::vector<const Edge*>> consumers(state.edges_.size());
 
     /// Ready Queue
     /// A edge in this queue means that all of its dependencies have been processed
     std::queue<const Edge*> queue;
 
     // Form the adjaceny list
-    for (const auto edge : state.edges_) {
-        std::unordered_set<const Edge*> producers;
+    for (size_t i = 0; i < state.edges_.size(); i++) {
+        const auto edge = state.edges_[i];
+
+        std::unordered_set<size_t> producers;
 
         for (const auto node : edge->inputs_) {
             /// producer -> consumer
@@ -387,18 +374,19 @@ void topo_process(
 
             // A nullptr means the node doesn't have a dependency
             if (producer)
-                producers.insert(producer);
+                producers.insert(producer->id_);
         }
 
-        indegree[edge] = producers.size();
+        indegree[i] = producers.size();
 
-        for (const Edge* producer : producers) {
-            consumers[producer].push_back(edge);
+        for (const auto producerId : producers) {
+            consumers[producerId].push_back(edge);
         }
     }
 
-    for (const auto* edge : state.edges_) {
-        if (indegree[edge] == 0) {
+    for (size_t i = 0; i < state.edges_.size(); i++) {
+        const auto edge = state.edges_[i];
+        if (indegree[i] == 0) {
             queue.push(edge);
         }
     }
@@ -452,10 +440,10 @@ void topo_process(
                 return;
         }
 
-        for (const auto neighbor : consumers[edge]) {
-            indegree[neighbor]--;
+        for (const auto neighbor : consumers[edge->id_]) {
+            indegree[neighbor->id_]--;
 
-            if (indegree[neighbor] == 0)
+            if (indegree[neighbor->id_] == 0)
                 queue.push(neighbor);
         }
     }
@@ -489,7 +477,7 @@ int main(int argc, char* argv[]) {
         nix::initLibStore(true);
         const nix::ref<nix::Store> store = nix::openStore();
 
-        std::unordered_map<const Edge*, Derivation> edge_map;
+        std::vector<Derivation> edge_map(state.edges_.size());
         topo_process(state, store, edge_map);
 
         const Node* node = state.LookupNode(target);
@@ -508,7 +496,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        std::cout << edge_map[target_edge].derivation_store_path << '\n';
+        std::cout << edge_map[target_edge->id_].derivation_store_path << '\n';
 
     } catch (const std::exception& e) {
         std::cerr << "Error: " << e.what() << '\n';
