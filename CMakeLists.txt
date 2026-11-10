@@ -44,7 +44,7 @@ get_filename_component(NIX_STORE_SHARED_LIBRARY_NAME
 get_filename_component(NIX_UTIL_SHARED_LIBRARY_NAME
     "${NIX_UTIL_SHARED_LIBRARY_REALPATH}" NAME)
 
-find_package(inja CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 
 get_target_property(FMT_SHARED_LIBRARY fmt::fmt IMPORTED_LOCATION_RELEASE)

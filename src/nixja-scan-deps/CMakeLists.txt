@@ -4,15 +4,16 @@ target_link_libraries(nixja-scan-deps PRIVATE
     nixja-common
     nlohmann_json::nlohmann_json
     PkgConfig::NIX_STORE
+    fmt::fmt
 )
 
 target_precompile_headers(nixja-scan-deps PRIVATE
     <nlohmann/json.hpp>
-)
-
-target_include_directories(nixja-scan-deps PRIVATE
-    ${CMAKE_CURRENT_BINARY_DIR})
-
-target_link_libraries(nixja-scan-deps PRIVATE
-    fmt::fmt
+    <nix/main/shared.hh>
+    <nix/store/derivations.hh>
+    <nix/store/globals.hh>
+    <nix/store/store-api.hh>
+    <nix/store/store-dir-config.hh>
+    <nix/store/store-open.hh>
+    <nix/util/posix-source-accessor.hh>
 )

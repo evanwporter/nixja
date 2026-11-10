@@ -12,7 +12,6 @@ target_link_libraries(nixja-gen PRIVATE
 )
 
 target_precompile_headers(nixja-gen PRIVATE
-    <inja/inja.hpp>
     <nlohmann/json.hpp>
     <nix/main/shared.hh>
     <nix/store/derivations.hh>
@@ -25,5 +24,4 @@ target_precompile_headers(nixja-gen PRIVATE
 
 target_include_directories(nixja-gen PRIVATE
     ${CMAKE_SOURCE_DIR}/external/ninja/src
-    ${CMAKE_CURRENT_BINARY_DIR}
 )

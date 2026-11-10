@@ -6,3 +6,14 @@ target_link_libraries(nixja PUBLIC
     PkgConfig::NIX_STORE
     nlohmann_json::nlohmann_json
 )
+
+target_precompile_headers(nixja PRIVATE
+    <nlohmann/json.hpp>
+    <nix/main/shared.hh>
+    <nix/store/derivations.hh>
+    <nix/store/globals.hh>
+    <nix/store/store-api.hh>
+    <nix/store/store-dir-config.hh>
+    <nix/store/store-open.hh>
+    <nix/util/posix-source-accessor.hh>
+)

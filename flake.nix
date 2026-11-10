@@ -41,7 +41,7 @@
 					];
 
 					buildInputs = [
-						final.inja
+						final.fmt
 						final.nlohmann_json
 						final.nix
 					];
@@ -73,7 +73,7 @@
 					];
 
 					buildInputs = [
-						final.inja
+						final.fmt
 						final.nlohmann_json
 						final.nix
 					];
@@ -117,7 +117,7 @@
 					];
 
 					buildInputs = [
-						final.inja
+						final.fmt
 						final.nlohmann_json
 						final.nix
 					];
@@ -194,7 +194,6 @@
 								llvmPkgs.clang-tools
 								cmake
 								ninja
-								inja
 								nlohmann_json
 								pkg-config
 								fmt
@@ -203,11 +202,6 @@
 								# Nix
 								nix
 								boost # https://github.com/NixOS/nix/issues/13782
-
-								# Python development
-								python313
-								python313Packages.jinja2
-								uv
 
 								# Utilities
 								bear
