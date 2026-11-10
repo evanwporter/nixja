@@ -19,6 +19,7 @@
 #include <unistd.h>
 
 #include "common.hpp"
+#include "toolchain.hpp"
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -99,26 +100,25 @@ std::string build_drv_file(const std::string name) {
     const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
     const std::string buildPhase = std::format(R"NIXJA(NIXJA_GEN=$({}); echo $NIXJA_GEN; )NIXJA", command);
 
-    const char* bashBuilder = "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash";
-    const char* buildPath = "/nix/store/g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin";
+    const char* bashBuilder = toolchain::bash;
+    const char* buildPath = toolchain::build_path;
 
     std::vector<std::string> inputSrcs;
     inputSrcs.push_back(
         fs::path(source_store_path).filename().string());
     inputSrcs.push_back(
-        "g2ycks7l2dz7rr4l6cyxf4in7qrfjk8j-clang-tools-21.1.8");
+        toolchain::clang_tools_store_name);
+    inputSrcs.push_back(toolchain::bash_store_name);
+    inputSrcs.push_back(toolchain::coreutils_store_name);
+    inputSrcs.push_back(toolchain::cc_store_name);
+    inputSrcs.push_back(
+        fs::path(toolchain::nix_store_package_path).filename().string());
+    inputSrcs.push_back(
+        fs::path(toolchain::nix_util_package_path).filename().string());
+    inputSrcs.push_back(
+        fs::path(toolchain::fmt_package_path).filename().string());
 
     json inputDrvs = json::object();
-    for (const char* derivation_path : {
-             "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
-             "m7bmd2qz1zcnk4k25y5cg6wbb3y9qwcb-coreutils-9.12.drv",
-             "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
-         }) {
-        inputDrvs[derivation_path] = {
-            { "dynamicOutputs", json::object() },
-            { "outputs", json::array({ "out" }) },
-        };
-    }
 
     const auto generator_drv_path = writeDerivation(store, {
                                                                .name = generatorName,

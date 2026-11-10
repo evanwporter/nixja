@@ -26,6 +26,7 @@
 #include <nlohmann/json.hpp>
 
 #include "common.hpp"
+#include "toolchain.hpp"
 
 namespace fs = std::filesystem;
 
@@ -124,7 +125,8 @@ local_dependencies(
 std::unordered_set<std::string>
 scan_dependencies(const std::string command) {
     // Run clang-scan-deps.
-    const std::string scan_command = "clang-scan-deps -- " + command;
+    const std::string scan_command =
+        std::string(toolchain::clang_scan_deps) + " -- " + command;
 
     const std::string output = exec(scan_command.c_str());
 
@@ -260,19 +262,10 @@ int main(int argc, char* argv[]) {
         inputSrcs.push_back(fs::path(storePath).filename().string());
     inputSrcs.push_back(
         fs::path(bashBuilder).parent_path().parent_path().filename().string());
+    inputSrcs.push_back(toolchain::coreutils_store_name);
+    inputSrcs.push_back(toolchain::cc_store_name);
 
-    const json inputDrvs = {
-        { "30hr2syjmfvflwi68acggp3w870ikw5c-bash-5.3p20.drv",
-          {
-              { "dynamicOutputs", json::object() },
-              { "outputs", json::array({ "out" }) },
-          } },
-        { "hjzzl7y4qy90800c8zk92z9w07l37x2a-gcc-wrapper-16.2.0.drv",
-          {
-              { "dynamicOutputs", json::object() },
-              { "outputs", json::array({ "out" }) },
-          } },
-    };
+    const json inputDrvs = json::object();
 
     const auto path = writeDerivation(store, {
         .name = name,
