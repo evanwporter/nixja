@@ -121,19 +121,9 @@ Result<void> create_derivation(
     std::vector<Derivation>& edge_map) {
     // processing a edge means creating a drv file for it
 
-    // Construct link phase.
-    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
-
-    linkPhase += fmt::format(
-        "ln -s {}/src \"$NIX_BUILD_TOP/src\"; ",
-        source_store_path);
-
-    linkPhase += fmt::format(
-        "ln -s {}/nixja-scan-deps \"$NIX_BUILD_TOP/nixja-scan-deps\"; ",
-        source_store_path);
-
-    linkPhase += fmt::format(
-        "ln -s {}/lib*.so* \"$NIX_BUILD_TOP/\"; ",
+    /// TODO: `cp -rs` symlinks every file. We only want to symlink top level files and folders
+    const std::string linkPhase = fmt::format(
+        "mkdir -p \"$NIX_BUILD_TOP\"; cp -rs {}/. \"$NIX_BUILD_TOP\"; ",
         source_store_path);
 
     // Toolchain configuration.
@@ -393,34 +383,12 @@ void topo_process(
 
     /// TODO: Move this out of this function
 
-    // const fs::path source_dir = fs::canonical(fs::current_path());
-    //
-    // const auto stored = store->addToStore(
-    //     source_dir.filename().string(), // "nixja", not "."
-    //     nix::PosixSourceAccessor::createAtRoot(source_dir),
-    //     nix::ContentAddressMethod::Raw::NixArchive);
-    //
-    // const std::string source_store_path = store->printStorePath(stored);
+    const fs::path source_dir = fs::canonical(fs::current_path());
 
-    // TODO: This filtering mechanism needs to be removed. Its only here so i don't keep
-    // adding the slightly changes directories to the nix store
-    const fs::path project_root = fs::canonical(fs::current_path());
-    nix::PathFilter only_src = [project_root](const std::string& path) {
-        const fs::path relative = fs::path(path).lexically_relative(project_root);
-        const std::string rel = relative.generic_string();
-        return rel == "."
-            || rel == "src"
-            || rel.starts_with("src/")
-            || rel == "nixja-scan-deps"
-            || (rel.starts_with("lib") && !rel.contains('/'));
-    };
     const auto stored = store->addToStore(
-        "source",
-        nix::PosixSourceAccessor::createAtRoot(project_root),
-        nix::ContentAddressMethod::Raw::NixArchive,
-        nix::HashAlgorithm::SHA256,
-        { },
-        only_src);
+        source_dir.filename().string(), // "nixja", not "."
+        nix::PosixSourceAccessor::createAtRoot(source_dir),
+        nix::ContentAddressMethod::Raw::NixArchive);
 
     const std::string source_store_path = store->printStorePath(stored);
 
