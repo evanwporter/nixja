@@ -69,6 +69,8 @@ struct Derivation {
     std::string output_path;
 };
 
+/// Returns the command with the inputs appropriately substituted
+/// TODO: This is a bad way of doing it I think. Better to hack onto EvaluateCommand somehow
 std::string command_for(
     const Edge* edge,
     const std::vector<Derivation>& edge_map) {
@@ -290,10 +292,6 @@ void process_dep_edge(
         outputs_str,
         command);
 
-    // This is the scanning stage, not the compilation stage. Its output
-    // is the derivation emitted by nixja-scan-deps; the derivation itself
-    // builds the object files once Nix resolves the dynamic output.
-    // Construct build and install phases.
     const std::string installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
 
     const std::string buildPhase = std::format(
@@ -390,58 +388,52 @@ void topo_process(
 }
 
 int main(int argc, char* argv[]) {
-    try {
-        if (argc < 2) {
-            std::cerr << "Usage: nixja <target>\n";
-            return 1;
-        }
-
-        std::string target = argv[1];
-
-        // Load Ninja build graph.
-        fs::path ninja_file = fs::current_path() / "build.ninja";
-
-        State state;
-        RealDiskInterface disk;
-        ManifestParser parser(&state, &disk);
-
-        std::string error;
-
-        if (!parser.Load(ninja_file.string(), &error)) {
-            std::cerr << "Parse error: " << error << '\n';
-            return 1;
-        }
-
-        nix::experimentalFeatureSettings.experimentalFeatures.set(
-            "ca-derivations dynamic-derivations");
-        nix::initLibStore(true);
-        const nix::ref<nix::Store> store = nix::openStore();
-
-        std::vector<Derivation> edge_map(state.edges_.size());
-        topo_process(state, store, edge_map);
-
-        const Node* node = state.LookupNode(target);
-
-        if (node == nullptr) {
-            // No such target in the loaded build graph.
-            // TODO: error
-            return 1;
-        }
-
-        const Edge* target_edge = node->in_edge();
-
-        if (target_edge == nullptr) {
-            // The target is a source file or has no producing build edge.
-            // TODO: Error
-            return 1;
-        }
-
-        std::cout << edge_map[target_edge->id_].derivation_store_path << '\n';
-
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << '\n';
+    if (argc < 2) {
+        std::cerr << "Usage: nixja <target>\n";
         return 1;
     }
+
+    std::string target = argv[1];
+
+    // Load Ninja build graph.
+    fs::path ninja_file = fs::current_path() / "build.ninja";
+
+    State state;
+    RealDiskInterface disk;
+    ManifestParser parser(&state, &disk);
+
+    std::string error;
+
+    if (!parser.Load(ninja_file.string(), &error)) {
+        std::cerr << "Parse error: " << error << '\n';
+        return 1;
+    }
+
+    nix::experimentalFeatureSettings.experimentalFeatures.set(
+        "ca-derivations dynamic-derivations");
+    nix::initLibStore(true);
+    const nix::ref<nix::Store> store = nix::openStore();
+
+    std::vector<Derivation> edge_map(state.edges_.size());
+    topo_process(state, store, edge_map);
+
+    const Node* node = state.LookupNode(target);
+
+    if (node == nullptr) {
+        // No such target in the loaded build graph.
+        // TODO: error
+        return 1;
+    }
+
+    const Edge* target_edge = node->in_edge();
+
+    if (target_edge == nullptr) {
+        // The target is a source file or has no producing build edge.
+        // TODO: Error
+        return 1;
+    }
+
+    std::cout << edge_map[target_edge->id_].derivation_store_path << '\n';
 
     return 0;
 }
