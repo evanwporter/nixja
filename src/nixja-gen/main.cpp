@@ -1,19 +1,18 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-#include <expected>
 #include <filesystem>
-#include <fmt/format.h>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <sys/wait.h>
+#include <unistd.h>
 #include <unordered_set>
 #include <vector>
 
-#include <sys/wait.h>
-#include <unistd.h>
-
 #include <nlohmann/json.hpp>
+
+#include <fmt/format.h>
 
 #include <nix/main/shared.hh>
 #include <nix/store/derivations.hh>
@@ -25,20 +24,19 @@
 #include <nix/util/posix-source-accessor.hh>
 
 #include "common.hpp"
+#include "toolchain.hpp"
+
 #include "disk_interface.h"
 #include "graph.h"
 #include "manifest_parser.h"
 #include "state.h"
-#include "toolchain.hpp"
 
 namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-template <typename T, typename E = std::string>
-using Result = std::expected<T, E>;
-
 // TODO: Clarify how each field is used
+// TODO: Check if I need the full thing
 struct Derivation {
 
     // const nix::StorePath wrapper_drv =
