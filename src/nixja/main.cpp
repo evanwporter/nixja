@@ -36,6 +36,7 @@ void run_command(const std::vector<std::string>& args) {
     pid_t pid = fork();
 
     if (pid == -1)
+        // TODO: error
         throw std::runtime_error("fork() failed");
 
     if (pid == 0) {
@@ -111,6 +112,8 @@ std::string build_drv_file(const std::string name) {
     inputSrcs.push_back(toolchain::bash_store_name);
     inputSrcs.push_back(toolchain::coreutils_store_name);
     inputSrcs.push_back(toolchain::cc_store_name);
+
+    // Libraries needed by nixja-gen
     inputSrcs.push_back(
         fs::path(toolchain::nix_store_package_path).filename().string());
     inputSrcs.push_back(

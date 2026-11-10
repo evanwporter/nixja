@@ -24,6 +24,7 @@ nix::StorePath writeDerivation(
         { "version", 4u },
         {
             "args",
+            // TODO: Only append the phase var if its not empty
             json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }),
         },
         { "env", env },
