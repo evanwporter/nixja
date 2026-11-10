@@ -6,6 +6,7 @@ target_link_libraries(nixja-gen PRIVATE
     libninja
     libninja-re2c
     PkgConfig::NIX_STORE
+    nlohmann_json::nlohmann_json
     fmt::fmt
 )
 
