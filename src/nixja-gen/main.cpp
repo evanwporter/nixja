@@ -5,7 +5,6 @@
 #include <filesystem>
 #include <fmt/format.h>
 #include <iostream>
-#include <nix/store/downstream-placeholder.hh>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -18,6 +17,7 @@
 
 #include <nix/main/shared.hh>
 #include <nix/store/derivations.hh>
+#include <nix/store/downstream-placeholder.hh>
 #include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
 #include <nix/store/store-dir-config.hh>
@@ -279,11 +279,7 @@ Result<void> process_dep_edge(
     const auto name = fs::path(edge->outputs_.front()->path()).filename().string();
 
     std::string derivationName = name;
-    std::replace(
-        derivationName.begin(),
-        derivationName.end(),
-        '.',
-        '_');
+    std::replace(derivationName.begin(), derivationName.end(), '.', '_');
 
     // A derivation-producing output must end in .drv.
     derivationName += ".drv";
@@ -321,13 +317,7 @@ Result<void> process_dep_edge(
         .outputMethod = "text",
     };
 
-    return create_derivation(
-        edge,
-        spec,
-        true,
-        source_store_path,
-        store,
-        edge_map);
+    return create_derivation(edge, spec, true, source_store_path, store, edge_map);
 }
 
 /// Kahns Algorithm
