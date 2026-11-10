@@ -10,7 +10,7 @@ This is good for CI builds where the /nix/store/ is kept between runs.
 
 The major downside, and why its not good for local builds is that every run we need scan every source file for dependencies. This necessary for purity.
 
-## Milestones
+## Milestones / Todo
 
 1. ~~Initial write in python using pyn~~
 
@@ -22,11 +22,23 @@ The major downside, and why its not good for local builds is that every run we n
 
 5. Figure out how to garbage collect old artifacts from the store automatically
 
-6. Generate nix derivations directly instead of going through `nix-instantiate`. (Anything to reduce the overhead of using nix).
+6. ~~Generate nix derivations directly instead of going through `nix-instantiate`. (Anything to reduce the overhead of using nix).~~
 
 7. Optimize, optimize, optimize
 
 8. Another goal of this project is to be minimal. Ideally we offload as much stuff to the NIX C++ API and libninja as possible.
+
+9. Add tests
+
+10. Perhaps switch over to using stable? Nix C-API
+
+11. Perhaps rewrite in C99 using SAMU instead of NINJA
+
+12. CMAKE -> MESON
+
+13. Create DRV files instead of converting from JSON
+
+14. Create common library with common functions
 
 ## Rationale
 
@@ -54,16 +66,7 @@ Unlike nix-ninja, this is built in C++. There are two reasons for this choice:
 
 # Release 
 
-Add tests
-
-## 0.2.0
-
-This release will generate drv files directly and add them to the store with nix store add
-
-## 0.3.0
-
-This release will replace nix store add and interface with the C++ nix api directly.
-
+TODO: Add tests
 
 ## TO THINK ABOUT
 
