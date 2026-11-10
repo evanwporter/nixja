@@ -113,7 +113,7 @@ bool has_depfile(const std::string& command) {
 // TODO: Combine the next two functions into one simpler one
 // The only difference is how it forms the dep list
 
-Result<void> create_derivation(
+void create_derivation(
     const Edge* edge,
     const DerivationSpec& spec,
     const bool generates_drv,
@@ -217,11 +217,9 @@ Result<void> create_derivation(
         .generated_path = generated_path,
         .output_path = output_path,
     };
-
-    return { };
 };
 
-Result<void> process_standard_edge(
+void process_standard_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
@@ -260,16 +258,10 @@ Result<void> process_standard_edge(
         .outputMethod = "nar",
     };
 
-    return create_derivation(
-        edge,
-        spec,
-        false,
-        source_store_path,
-        store,
-        edge_map);
+    create_derivation(edge, spec, false, source_store_path, store, edge_map);
 }
 
-Result<void> process_dep_edge(
+void process_dep_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
@@ -290,9 +282,8 @@ Result<void> process_dep_edge(
     // Construct scanner output arguments.
     std::string outputs_str;
 
-    for (const auto& output : edge->outputs_) {
+    for (const auto& output : edge->outputs_)
         outputs_str += output->path();
-    }
 
     const std::string nixja_scan_deps = fmt::format(
         "./nixja-scan-deps -i TODO -o {} -- {}",
@@ -317,7 +308,7 @@ Result<void> process_dep_edge(
         .outputMethod = "text",
     };
 
-    return create_derivation(edge, spec, true, source_store_path, store, edge_map);
+    create_derivation(edge, spec, true, source_store_path, store, edge_map);
 }
 
 /// Kahns Algorithm
@@ -384,15 +375,10 @@ void topo_process(
         const auto edge = queue.front();
         queue.pop();
 
-        if (has_depfile(edge->EvaluateCommand())) {
-            const auto result = process_dep_edge(edge, source_store_path, store, edge_map);
-            if (!result.has_value())
-                return;
-        } else {
-            const auto result = process_standard_edge(edge, source_store_path, store, edge_map);
-            if (!result.has_value())
-                return;
-        }
+        if (has_depfile(edge->EvaluateCommand()))
+            process_dep_edge(edge, source_store_path, store, edge_map);
+        else
+            process_standard_edge(edge, source_store_path, store, edge_map);
 
         for (const auto neighbor : consumers[edge->id_]) {
             indegree[neighbor->id_]--;
