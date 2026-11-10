@@ -12,8 +12,6 @@
 				outputHashMode = "text";
 				outputHashAlgo = "sha256";
 
-				buildInputs = [pkgs.nix];
-                
                 # TODO: figure out what I need
 				nativeBuildInputs = with pkgs; [
 					python3
@@ -27,20 +25,11 @@
 				requiredSystemFeatures = ["recursive-nix"];
 
 				buildPhase = ''
-					./nixja-gen {{ target }} > derivation.nix
-					{# echo "[NIXJA]" #}
-					{# cat derivation.nix #}
+					NIXJA_GEN=$(./nixja-gen {{ target }})
 				'';
 
 				installPhase = ''
-					# nix-instantiate prints the generated .drv path. copy its
-					# contents so that $out itself is a valid .drv file.
-					cp "$(
-					  nix-instantiate \
-					    --extra-experimental-features 'ca-derivations dynamic-derivations' \
-					    derivation.nix \
-					    --arg pkgs 'import ${pkgs.path} {}'
-					)" "$out"
+					cp "$NIXJA_GEN" "$out"
 				'';
 			}).outPath
 		"out";
