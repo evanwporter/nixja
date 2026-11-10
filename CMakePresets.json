@@ -8,7 +8,7 @@
     "configurePresets": [
         {
             "name": "debug",
-            "displayName": "GCC Debug",
+            "displayName": "Debug",
             "generator": "Ninja",
             "binaryDir": "${sourceDir}/build/debug",
             "cacheVariables": {
@@ -23,7 +23,7 @@
     "buildPresets": [
         {
             "name": "debug",
-            "displayName": "Debug Build",
+            "displayName": "Debug",
             "configurePreset": "debug",
             "jobs": 0
         }

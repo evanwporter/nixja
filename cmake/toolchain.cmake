@@ -1,4 +1,5 @@
 # Discover the tools and package outputs used by generated derivations.
+# FYI: This is the only human written line in this file
 
 find_program(BASH_PROGRAM bash REQUIRED)
 find_program(CP_PROGRAM cp REQUIRED)

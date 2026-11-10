@@ -1,11 +1,8 @@
 add_library(nixja-common STATIC common.cpp)
 
-set(NIXJA_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
-set(NIXJA_TOOLCHAIN_HEADER "${NIXJA_GENERATED_INCLUDE_DIR}/toolchain.hpp")
-file(MAKE_DIRECTORY "${NIXJA_GENERATED_INCLUDE_DIR}")
 configure_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/toolchain.hpp.in"
-    "${NIXJA_TOOLCHAIN_HEADER}"
+    "${CMAKE_CURRENT_BINARY_DIR}/toolchain.hpp"
     @ONLY
 )
 
@@ -20,7 +17,7 @@ target_link_libraries(nixja-common PUBLIC
 
 target_include_directories(nixja-common PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${NIXJA_GENERATED_INCLUDE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_precompile_headers(nixja-common PRIVATE
