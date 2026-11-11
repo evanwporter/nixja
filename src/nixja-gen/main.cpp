@@ -138,8 +138,7 @@ Result<void> create_derivation(
     inputSrcs.push_back(
         fs::path(source_store_path).filename().string());
 
-    inputSrcs.push_back(
-        toolchain::clang_tools_store_name);
+    inputSrcs.push_back(toolchain::clang_tools_store_name);
     inputSrcs.push_back(toolchain::bash_store_name);
     inputSrcs.push_back(toolchain::coreutils_store_name);
     inputSrcs.push_back(toolchain::cc_store_name);

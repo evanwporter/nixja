@@ -129,18 +129,18 @@ Result<std::string> build_drv_file(
     json inputDrvs = json::object();
 
     const auto generator_drv_path = TRY(writeDerivation(store, {
-                                                               .name = generatorName,
-                                                               .system = "x86_64-linux",
-                                                               .builder = bashBuilder,
-                                                               .path = buildPath,
-                                                               .linkPhase = linkPhase,
-                                                               .buildPhase = buildPhase,
-                                                               .installPhase = installPhase,
-                                                               .outputMethod = "text",
-                                                               .inputSrcs = inputSrcs,
-                                                               .inputDrvs = inputDrvs,
-                                                               .extraEnv = json::object(),
-                                                           }));
+                                                                   .name = generatorName,
+                                                                   .system = "x86_64-linux",
+                                                                   .builder = bashBuilder,
+                                                                   .path = buildPath,
+                                                                   .linkPhase = linkPhase,
+                                                                   .buildPhase = buildPhase,
+                                                                   .installPhase = installPhase,
+                                                                   .outputMethod = "text",
+                                                                   .inputSrcs = inputSrcs,
+                                                                   .inputDrvs = inputDrvs,
+                                                                   .extraEnv = json::object(),
+                                                               }));
 
     const auto generated_drv = nix::DownstreamPlaceholder::unknownCaOutput(generator_drv_path, "out");
     const auto generated_output = nix::DownstreamPlaceholder::unknownDerivation(generated_drv, "out");
@@ -161,20 +161,20 @@ Result<std::string> build_drv_file(
     };
 
     const auto finalDrvPath = TRY(writeDerivation(store, {
-                                                         .name = target,
-                                                         .system = "x86_64-linux",
-                                                         .builder = bashBuilder,
-                                                         .path = toolchain::coreutils_bin_dir,
-                                                         .linkPhase = "",
-                                                         .buildPhase = "",
-                                                         .installPhase = "cp -r \"$input\" \"$out\"",
-                                                         .outputMethod = "nar",
-                                                         .inputSrcs = json::array({ toolchain::bash_store_name, toolchain::coreutils_store_name }),
-                                                         .inputDrvs = finalInputDrvs,
-                                                         .extraEnv = {
-                                                             { "input", generated_output.render() },
-                                                         },
-                                                     }));
+                                                             .name = target,
+                                                             .system = "x86_64-linux",
+                                                             .builder = bashBuilder,
+                                                             .path = toolchain::coreutils_bin_dir,
+                                                             .linkPhase = "",
+                                                             .buildPhase = "",
+                                                             .installPhase = "cp -r \"$input\" \"$out\"",
+                                                             .outputMethod = "nar",
+                                                             .inputSrcs = json::array({ toolchain::bash_store_name, toolchain::coreutils_store_name }),
+                                                             .inputDrvs = finalInputDrvs,
+                                                             .extraEnv = {
+                                                                 { "input", generated_output.render() },
+                                                             },
+                                                         }));
     return std::string(finalDrvPath.to_string());
 }
 
