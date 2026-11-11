@@ -58,7 +58,9 @@ void run_command(const std::vector<std::string>& args) {
 // TODO: Split up into outer and inner derivation generation
 // TODO: name == target
 // TODO: Like 90% of this is copied from nixja-gen, so we need to create a common function
-std::string build_drv_file(const std::string& target, const std::string& store_path) {
+Result<std::string> build_drv_file(
+    const std::string& target,
+    const std::string& store_path) {
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
     nix::initLibStore(true);
@@ -93,6 +95,13 @@ std::string build_drv_file(const std::string& target, const std::string& store_p
     const std::string generatorName = target + ".drv";
 
     const std::string command = fmt::format("cd source && {} {}", toolchain::nixja_gen, target);
+
+    // These are the tools that must be on the path
+    // const auto nixja_gen_path = TRY(parse_which("nixja-gen", store));
+    // const auto nixja_scan_deps_path = TRY(parse_which("nixja-scan-deps", store));
+    const auto coreutils_path = TRY(parse_which("cp", store));
+    const auto cc_path = TRY(parse_which("cc", store));
+    const auto clang_tools_path = TRY(parse_which("clang-scan-deps", store));
 
     // This is the scanning stage, not the compilation stage. Its output
     // is the derivation emitted by nixja-scan-deps; the derivation itself
@@ -201,7 +210,13 @@ int main(int argc, char* argv[]) {
 
     const auto target = program.get<std::string>("target");
     const auto store_path = program.get<std::string>("--store");
-    const auto drv_path = build_drv_file(target, store_path);
+
+    const auto drv_result = build_drv_file(target, store_path);
+    if (!drv_result) {
+        std::cerr << drv_result.error() << '\n';
+        return 1;
+    }
+    const auto drv_path = std::move(drv_result.value());
 
     // Building this one derivation causes Nix to resolve the generator's
     // dynamic output and build the derivation it emits.

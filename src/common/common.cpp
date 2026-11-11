@@ -1,7 +1,14 @@
 #include "common.hpp"
 
+#include <expected>
+#include <filesystem>
+
+#include <fmt/format.h>
 #include <nix/store/derivations.hh>
 #include <nix/store/globals.hh>
+#include <nix/store/store-api.hh>
+
+namespace fs = std::filesystem;
 
 nix::StorePath writeDerivation(
     const nix::ref<nix::Store>& store,
@@ -60,4 +67,28 @@ std::string exec(const char* cmd) {
         result += buffer.data();
     }
     return result;
+}
+
+Result<fs::path> parse_which(
+    const std::string& cmd,
+    const nix::ref<nix::Store>& store) {
+    // TODO: check if path exists
+    // also just better error handling
+
+    std::string output = exec(fmt::format("which {}", cmd).c_str());
+    const auto end = output.find_last_not_of(" \t\r\n");
+    if (end == std::string::npos)
+        return Err("Could not find '{}' on PATH.", cmd);
+    output.erase(end + 1);
+
+    const auto path = fs::path(output).parent_path().parent_path();
+    try {
+        const auto store_path = store->parseStorePath(path.string());
+        if (!store->isValidPath(store_path))
+            return Err("The store path: '{}' does not lie in the Nix store.", store_path.to_string());
+    } catch (const std::exception& error) {
+        return Err("Could not parse '{}' as a store path: {}", path.string(), error.what());
+    }
+
+    return path;
 }
