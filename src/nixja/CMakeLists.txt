@@ -5,6 +5,7 @@ target_link_libraries(nixja PUBLIC
     fmt::fmt
     PkgConfig::NIX_STORE
     nlohmann_json::nlohmann_json
+    argparse::argparse
 )
 
 target_precompile_headers(nixja PRIVATE
@@ -16,4 +17,8 @@ target_precompile_headers(nixja PRIVATE
     <nix/store/store-dir-config.hh>
     <nix/store/store-open.hh>
     <nix/util/posix-source-accessor.hh>
+)
+
+target_compile_definitions(nixja PRIVATE
+    NIXJA_VERSION="${NIXJA_VERSION}"
 )

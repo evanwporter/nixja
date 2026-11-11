@@ -7,6 +7,8 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
+#include <argparse/argparse.hpp>
+
 #include <nix/main/shared.hh>
 #include <nix/store/derivations.hh>
 #include <nix/store/globals.hh>
@@ -56,11 +58,11 @@ void run_command(const std::vector<std::string>& args) {
 // TODO: Split up into outer and inner derivation generation
 // TODO: name == target
 // TODO: Like 90% of this is copied from nixja-gen, so we need to create a common function
-std::string build_drv_file(const std::string name) {
+std::string build_drv_file(const std::string& target, const std::string& store_path) {
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
     nix::initLibStore(true);
-    const nix::ref<nix::Store> store = nix::openStore();
+    const nix::ref<nix::Store> store = nix::openStore(store_path);
 
     const fs::path project_root = fs::canonical(fs::current_path());
     // Keep the complete project tree together.  The builder mounts this one
@@ -88,10 +90,9 @@ std::string build_drv_file(const std::string name) {
     // A dynamic derivation output is parsed by Nix as a store derivation, so
     // its store-path name must carry the `.drv` suffix.  The outer result
     // derivation keeps the user-facing target name.
-    const std::string generatorName = name + ".drv";
-    const std::string derivationName = name;
+    const std::string generatorName = target + ".drv";
 
-    const std::string command = fmt::format("cd source && {} {}", toolchain::nixja_gen, name);
+    const std::string command = fmt::format("cd source && {} {}", toolchain::nixja_gen, target);
 
     // This is the scanning stage, not the compilation stage. Its output
     // is the derivation emitted by nixja-scan-deps; the derivation itself
@@ -158,7 +159,7 @@ std::string build_drv_file(const std::string name) {
     };
 
     const auto finalDrvPath = writeDerivation(store, {
-                                                         .name = derivationName,
+                                                         .name = target,
                                                          .system = "x86_64-linux",
                                                          .builder = bashBuilder,
                                                          .path = toolchain::coreutils_bin_dir,
@@ -179,27 +180,34 @@ std::string build_drv_file(const std::string name) {
 // TODO: Test if I can run this in a standard nix derivation as if it was ninja or something
 // TODO: Add the -C arg like ninja -C build
 int main(int argc, char* argv[]) {
+    argparse::ArgumentParser program("nixja", NIXJA_VERSION);
+    program.add_description(
+        "A Ninja compatible build system for Nix.");
+    program.add_argument("target")
+        .help("Build the specified target")
+        .metavar("TARGET");
+    program.add_argument("--store")
+        .help("Nix store path")
+        .default_value("")
+        .metavar("PATH");
+
     try {
-        if (argc < 2) {
-            std::cerr << "Usage: nixja <target>\n";
-            return 1;
-        }
-
-        const std::string target = argv[1];
-
-        const auto drv_path = build_drv_file(target);
-
-        // Building this one derivation causes Nix to resolve the generator's
-        // dynamic output and build the derivation it emits.
-        // TODO: don't use nix-build (so we don't have to require recursive-nix in parent drv)
-        // to solve this I might need to steal stuff from nix-ninja
-        // TODO: use NIXPATH to obtain `pkgs`
-        run_command({ "nix-build", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", "/nix/store/" + drv_path });
-
-    } catch (const std::exception& e) {
-        std::cerr << "Error: " << e.what() << '\n';
-        return 1;
+        program.parse_args(argc, argv); // Example: ./main --input_files config.yml System.xml
+    } catch (const std::exception& err) {
+        std::cerr << err.what() << std::endl;
+        std::cerr << program;
+        std::exit(1);
     }
+
+    const auto target = program.get<std::string>("target");
+    const auto store_path = program.get<std::string>("--store");
+    const auto drv_path = build_drv_file(target, store_path);
+
+    // Building this one derivation causes Nix to resolve the generator's
+    // dynamic output and build the derivation it emits.
+    // TODO: don't use nix-build (so we don't have to require recursive-nix in parent drv)
+    // to solve this I might need to steal stuff from nix-ninja
+    run_command({ "nix-build", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", "/nix/store/" + drv_path });
 
     return 0;
 }

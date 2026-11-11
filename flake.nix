@@ -201,6 +201,7 @@
 								pkg-config
 								fmt
 								ccache
+								argparse
 
 								# Nix
 								nix

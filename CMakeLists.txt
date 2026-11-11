@@ -14,7 +14,12 @@ endif()
 set(NINJA_BUILD_BINARY OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" NIXJA_VERSION)
+string(STRIP "${NIXJA_VERSION}" NIXJA_VERSION)
+
 include("${CMAKE_SOURCE_DIR}/cmake/toolchain.cmake")
+
+find_package(argparse CONFIG REQUIRED)
 
 add_subdirectory(external/ninja)
 
