@@ -93,8 +93,8 @@ Result<std::string> build_drv_file(
     const fs::path nixja_gen_path = NIXJA_GEN_PATH;
     const std::string command = fmt::format("cd source && {} {}", nixja_gen_path.string(), target);
 
-    const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
     const std::string buildPhase = std::format("NIXJA_GEN=$({}); echo $NIXJA_GEN;", command);
+    const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
 
     std::vector<std::string> inputSrcs;
     inputSrcs.push_back(fs::path(source_store_path).filename().string());
@@ -115,7 +115,6 @@ Result<std::string> build_drv_file(
                                                                    .outputMethod = "text",
                                                                    .inputSrcs = inputSrcs,
                                                                    .inputDrvs = inputDrvs,
-                                                                   .extraEnv = json::object(),
                                                                }));
 
     const auto generated_drv = nix::DownstreamPlaceholder::unknownCaOutput(generator_drv_path, "out");
@@ -141,13 +140,10 @@ Result<std::string> build_drv_file(
                                                              .system = "x86_64-linux",
                                                              .linkPhase = "",
                                                              .buildPhase = "",
-                                                             .installPhase = "cp -r \"$input\" \"$out\"",
+                                                             .installPhase = fmt::format("cp -r \"{}\" \"$out\"", generated_output.render()),
                                                              .outputMethod = "nar",
                                                              .inputSrcs = json::array(),
                                                              .inputDrvs = finalInputDrvs,
-                                                             .extraEnv = {
-                                                                 { "input", generated_output.render() },
-                                                             },
                                                          }));
     return std::string(finalDrvPath.to_string());
 }

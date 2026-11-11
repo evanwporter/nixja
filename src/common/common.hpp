@@ -70,6 +70,7 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
 }
 
 // a Result or return its error
+// Equivalent to `?` in RUST
 // https://www.reddit.com/r/cpp/comments/e1pdds/simplifying_stdexpected_error_handling_with_an/
 #define TRY(expr) ({                                          \
     auto&& result = (expr);                                   \
@@ -91,6 +92,7 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
 struct DerivationSpec {
     std::string name;
     std::string system;
+
     /// Additional PATH entries, appended after the core packages.
     std::string path;
 
@@ -103,6 +105,8 @@ struct DerivationSpec {
 
     json inputSrcs;
     json inputDrvs;
+
+    /// TODO: Currently this is unused
     json extraEnv;
 };
 

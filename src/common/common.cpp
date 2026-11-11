@@ -13,6 +13,7 @@ Result<nix::StorePath> writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec) {
 
+    /// Core packages which every nixja* must have at access to at runtime
     const auto bash = TRY(parse_which("bash", store));
     const auto coreutils = TRY(parse_which("cp", store));
     const auto which = TRY(parse_which("which", store));
@@ -44,6 +45,7 @@ Result<nix::StorePath> writeDerivation(
         cc.filename().string(),
         clang_tools.filename().string(),
     });
+
     for (const auto& input : spec.inputSrcs)
         inputSrcs.push_back(input);
 

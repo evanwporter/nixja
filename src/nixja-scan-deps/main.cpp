@@ -237,7 +237,6 @@ int main(int argc, char* argv[]) {
                                                  .outputMethod = "nar",
                                                  .inputSrcs = inputSrcs,
                                                  .inputDrvs = inputDrvs,
-                                                 .extraEnv = json::object(),
                                              });
 
     if (!path.has_value()) {
