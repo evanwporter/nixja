@@ -1,8 +1,8 @@
 #pragma once
 #include <string>
 
-#include <nlohmann/json.hpp>
 #include <nix/store/store-api.hh>
+#include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
 
@@ -31,3 +31,5 @@ struct DerivationSpec {
 nix::StorePath writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec);
+
+std::string exec(const char* cmd);
