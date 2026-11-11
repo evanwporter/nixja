@@ -4,18 +4,10 @@
 #include <string>
 #include <vector>
 
-#include <fmt/format.h>
-#include <nlohmann/json.hpp>
-
 #include <argparse/argparse.hpp>
-
-#include <nix/main/shared.hh>
-#include <nix/store/derivations.hh>
-#include <nix/store/globals.hh>
+#include <fmt/format.h>
 #include <nix/store/store-api.hh>
-#include <nix/store/store-dir-config.hh>
-#include <nix/store/store-open.hh>
-#include <nix/util/posix-source-accessor.hh>
+#include <nlohmann/json.hpp>
 
 #include <sys/wait.h>
 #include <unistd.h>

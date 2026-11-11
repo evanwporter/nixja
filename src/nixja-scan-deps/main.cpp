@@ -4,7 +4,6 @@
 #include <iostream>
 #include <regex>
 #include <sstream>
-#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -13,13 +12,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <nix/main/shared.hh>
-#include <nix/store/derivations.hh>
-#include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
-#include <nix/store/store-dir-config.hh>
-#include <nix/store/store-open.hh>
-#include <nix/util/posix-source-accessor.hh>
 
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>

@@ -5,23 +5,15 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include <sys/wait.h>
-#include <unistd.h>
 #include <unordered_set>
 #include <vector>
 
-#include <nlohmann/json.hpp>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include <fmt/format.h>
-
-#include <nix/main/shared.hh>
-#include <nix/store/derivations.hh>
-#include <nix/store/downstream-placeholder.hh>
-#include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
-#include <nix/store/store-dir-config.hh>
-#include <nix/store/store-open.hh>
-#include <nix/util/posix-source-accessor.hh>
+#include <nlohmann/json.hpp>
 
 #include "common.hpp"
 
@@ -108,9 +100,6 @@ bool has_depfile(const std::string& command) {
 
     return false;
 }
-
-// TODO: Combine the next two functions into one simpler one
-// The only difference is how it forms the dep list
 
 Result<void> create_derivation(
     const Edge* edge,
