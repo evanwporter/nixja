@@ -113,7 +113,7 @@ bool has_depfile(const std::string& command) {
 // TODO: Combine the next two functions into one simpler one
 // The only difference is how it forms the dep list
 
-void create_derivation(
+Result<void> create_derivation(
     const Edge* edge,
     const DerivationSpec& spec,
     const bool generates_drv,
@@ -193,7 +193,7 @@ void create_derivation(
         { "NIXJA_PATH", buildPath },
         { "NIXJA_BASH", bashBuilder },
     };
-    const auto drv_path = writeDerivation(store, completeSpec);
+    const auto drv_path = TRY(writeDerivation(store, completeSpec));
 
     // Resolve output paths.
     std::string generated_path;
@@ -219,9 +219,11 @@ void create_derivation(
         .generated_path = generated_path,
         .output_path = output_path,
     };
+
+    return { };
 };
 
-void process_standard_edge(
+Result<void> process_standard_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
@@ -260,10 +262,12 @@ void process_standard_edge(
         .outputMethod = "nar",
     };
 
-    create_derivation(edge, spec, false, source_store_path, store, edge_map);
+    TRY(create_derivation(edge, spec, false, source_store_path, store, edge_map));
+
+    return { };
 }
 
-void process_dep_edge(
+Result<void> process_dep_edge(
     const Edge* edge,
     const std::string& source_store_path,
     const nix::ref<nix::Store> store,
@@ -307,12 +311,14 @@ void process_dep_edge(
         .outputMethod = "text",
     };
 
-    create_derivation(edge, spec, true, source_store_path, store, edge_map);
+    TRY(create_derivation(edge, spec, true, source_store_path, store, edge_map));
+
+    return { };
 }
 
 /// Kahns Algorithm
 /// See LC Course Scheduling
-void topo_process(
+Result<void> topo_process(
     const State& state,
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
@@ -375,9 +381,9 @@ void topo_process(
         queue.pop();
 
         if (has_depfile(edge->EvaluateCommand()))
-            process_dep_edge(edge, source_store_path, store, edge_map);
+            TRY(process_dep_edge(edge, source_store_path, store, edge_map));
         else
-            process_standard_edge(edge, source_store_path, store, edge_map);
+            TRY(process_standard_edge(edge, source_store_path, store, edge_map));
 
         for (const auto neighbor : consumers[edge->id_]) {
             indegree[neighbor->id_]--;
@@ -386,6 +392,8 @@ void topo_process(
                 queue.push(neighbor);
         }
     }
+
+    return { };
 }
 
 int main(int argc, char* argv[]) {
@@ -416,7 +424,7 @@ int main(int argc, char* argv[]) {
     const nix::ref<nix::Store> store = nix::openStore();
 
     std::vector<Derivation> edge_map(state.edges_.size());
-    topo_process(state, store, edge_map);
+    MAIN_TRY(topo_process(state, store, edge_map));
 
     const Node* node = state.LookupNode(target);
 

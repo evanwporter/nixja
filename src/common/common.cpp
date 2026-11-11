@@ -1,6 +1,5 @@
 #include "common.hpp"
 
-#include <expected>
 #include <filesystem>
 
 #include <fmt/format.h>
@@ -10,7 +9,7 @@
 
 namespace fs = std::filesystem;
 
-nix::StorePath writeDerivation(
+Result<nix::StorePath> writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec) {
 

@@ -249,5 +249,11 @@ int main(int argc, char* argv[]) {
                                                  .extraEnv = json::object(),
                                              });
 
-    std::cout << "/nix/store/" << path.to_string() << std::endl;
+    if (!path.has_value()) {
+        std::cerr << path.error() << std::endl;
+        return 1;
+    }
+
+    std::cout << "/nix/store/" << path->to_string() << std::endl;
+    return 0;
 }

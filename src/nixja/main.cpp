@@ -89,9 +89,6 @@ Result<std::string> build_drv_file(
         "ln -s {} \"$NIX_BUILD_TOP/source\"; ",
         source_store_path);
 
-    // A dynamic derivation output is parsed by Nix as a store derivation, so
-    // its store-path name must carry the `.drv` suffix.  The outer result
-    // derivation keeps the user-facing target name.
     const std::string generatorName = target + ".drv";
 
     const std::string command = fmt::format("cd source && {} {}", toolchain::nixja_gen, target);
@@ -102,26 +99,22 @@ Result<std::string> build_drv_file(
     const auto coreutils_path = TRY(parse_which("cp", store));
     const auto cc_path = TRY(parse_which("cc", store));
     const auto clang_tools_path = TRY(parse_which("clang-scan-deps", store));
+    const auto bash_path = TRY(parse_which("bash", store));
 
-    // This is the scanning stage, not the compilation stage. Its output
-    // is the derivation emitted by nixja-scan-deps; the derivation itself
-    // builds the object files once Nix resolves the dynamic output.
-    // This output is itself a derivation. A downstream derivation declares it
-    // as a dynamic input, so Nix resolves and builds it in the same graph.
     const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
     const std::string buildPhase = std::format(R"NIXJA(NIXJA_GEN=$({}); echo $NIXJA_GEN; )NIXJA", command);
 
     const char* bashBuilder = toolchain::bash;
-    const char* buildPath = toolchain::build_path;
+    const std::string buildPath = fmt::format("{}/bin:{}/bin:{}/bin", coreutils_path.string(), cc_path.string(), clang_tools_path.string());
 
     std::vector<std::string> inputSrcs;
-    inputSrcs.push_back(
-        fs::path(source_store_path).filename().string());
-    inputSrcs.push_back(
-        toolchain::clang_tools_store_name);
-    inputSrcs.push_back(toolchain::bash_store_name);
-    inputSrcs.push_back(toolchain::coreutils_store_name);
-    inputSrcs.push_back(toolchain::cc_store_name);
+    inputSrcs.push_back(fs::path(source_store_path).filename().string());
+    inputSrcs.push_back(coreutils_path.filename().string());
+    inputSrcs.push_back(cc_path.filename().string());
+    inputSrcs.push_back(bash_path.filename().string());
+
+    inputSrcs.push_back(clang_tools_path.filename().string());
+
     if (toolchain::nixja_gen_store_name[0] != '\0')
         inputSrcs.push_back(toolchain::nixja_gen_store_name);
 
@@ -135,7 +128,7 @@ Result<std::string> build_drv_file(
 
     json inputDrvs = json::object();
 
-    const auto generator_drv_path = writeDerivation(store, {
+    const auto generator_drv_path = TRY(writeDerivation(store, {
                                                                .name = generatorName,
                                                                .system = "x86_64-linux",
                                                                .builder = bashBuilder,
@@ -147,7 +140,7 @@ Result<std::string> build_drv_file(
                                                                .inputSrcs = inputSrcs,
                                                                .inputDrvs = inputDrvs,
                                                                .extraEnv = json::object(),
-                                                           });
+                                                           }));
 
     const auto generated_drv = nix::DownstreamPlaceholder::unknownCaOutput(generator_drv_path, "out");
     const auto generated_output = nix::DownstreamPlaceholder::unknownDerivation(generated_drv, "out");
@@ -167,7 +160,7 @@ Result<std::string> build_drv_file(
                                                        } },
     };
 
-    const auto finalDrvPath = writeDerivation(store, {
+    const auto finalDrvPath = TRY(writeDerivation(store, {
                                                          .name = target,
                                                          .system = "x86_64-linux",
                                                          .builder = bashBuilder,
@@ -181,7 +174,7 @@ Result<std::string> build_drv_file(
                                                          .extraEnv = {
                                                              { "input", generated_output.render() },
                                                          },
-                                                     });
+                                                     }));
     return std::string(finalDrvPath.to_string());
 }
 
@@ -212,10 +205,7 @@ int main(int argc, char* argv[]) {
     const auto store_path = program.get<std::string>("--store");
 
     const auto drv_result = build_drv_file(target, store_path);
-    if (!drv_result) {
-        std::cerr << drv_result.error() << '\n';
-        return 1;
-    }
+    MAIN_TRY(drv_result);
     const auto drv_path = std::move(drv_result.value());
 
     // Building this one derivation causes Nix to resolve the generator's

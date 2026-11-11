@@ -3,6 +3,7 @@
 #include <concepts>
 #include <expected>
 #include <filesystem>
+#include <iostream>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -60,14 +61,32 @@ inline std::unexpected<std::string> Err(
     return Err(fmt::format(format, std::forward<Args>(args)...));
 }
 
+template <typename T, typename E>
+decltype(auto) unwrap_result(std::expected<T, E>& result) {
+    if constexpr (std::is_void_v<T>) {
+        result.value();
+    } else {
+        return std::move(result.value());
+    }
+}
+
 // a Result or return its error
 // https://www.reddit.com/r/cpp/comments/e1pdds/simplifying_stdexpected_error_handling_with_an/
 #define TRY(expr) ({                                          \
     auto&& result = (expr);                                   \
     if (!result)                                              \
         return std::unexpected { std::move(result.error()) }; \
-    std::move(result.value());                                \
+    unwrap_result(result);                                    \
 })
+
+// Use only from an int-returning main function.
+#define MAIN_TRY(expr) do {                         \
+    auto&& result = (expr);                         \
+    if (!result) {                                  \
+        std::cerr << result.error() << '\n';        \
+        return 1;                                   \
+    }                                               \
+} while (false)
 
 struct DerivationSpec {
     std::string name;
@@ -91,7 +110,7 @@ struct DerivationSpec {
     json extraEnv;
 };
 
-nix::StorePath writeDerivation(
+Result<nix::StorePath> writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec);
 
