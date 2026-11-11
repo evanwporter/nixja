@@ -92,11 +92,7 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
 struct DerivationSpec {
     std::string name;
     std::string system;
-
-    /// Path to bash
-    std::string builder;
-
-    /// PATH env variable
+    /// Additional PATH entries, appended after the core packages.
     std::string path;
 
     std::string linkPhase;

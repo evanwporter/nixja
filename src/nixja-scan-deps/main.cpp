@@ -25,7 +25,6 @@
 #include <nlohmann/json.hpp>
 
 #include "common.hpp"
-#include "toolchain.hpp"
 
 namespace fs = std::filesystem;
 
@@ -107,7 +106,7 @@ local_dependencies(
 std::unordered_set<std::string>
 scan_dependencies(const std::string command) {
     // Run clang-scan-deps.
-    const std::string scan_command = std::string(toolchain::clang_scan_deps) + " -- " + command;
+    const std::string scan_command = "clang-scan-deps -- " + command;
 
     const std::string output = exec(scan_command.c_str());
 
@@ -222,24 +221,16 @@ int main(int argc, char* argv[]) {
             "cp {} $out/{}; ", output, fs::path(output).filename().string());
     }
 
-    const char* bashBuilder = toolchain::bash;
-    const char* buildPath = toolchain::build_path;
-
     std::vector<std::string> inputSrcs;
-    inputSrcs.reserve(store_paths.size() + 3);
+    inputSrcs.reserve(store_paths.size());
     for (const auto& [dependency, storePath] : store_paths)
         inputSrcs.push_back(fs::path(storePath).filename().string());
-    inputSrcs.push_back(toolchain::bash_store_name);
-    inputSrcs.push_back(toolchain::coreutils_store_name);
-    inputSrcs.push_back(toolchain::cc_store_name);
 
     const json inputDrvs = json::object();
 
     const auto path = writeDerivation(store, {
                                                  .name = name,
                                                  .system = "x86_64-linux",
-                                                 .builder = bashBuilder,
-                                                 .path = buildPath,
                                                  .linkPhase = linkPhase,
                                                  .buildPhase = command,
                                                  .installPhase = installPhase,

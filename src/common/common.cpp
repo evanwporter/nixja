@@ -13,9 +13,23 @@ Result<nix::StorePath> writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec) {
 
+    const auto bash = TRY(parse_which("bash", store));
+    const auto coreutils = TRY(parse_which("cp", store));
+    const auto which = TRY(parse_which("which", store));
+    const auto cc = TRY(parse_which("cc", store));
+    const auto clang_tools = TRY(parse_which("clang-scan-deps", store));
+
+    const std::string core_path = fmt::format(
+        "{}/bin:{}/bin:{}/bin:{}/bin:{}/bin",
+        bash.string(),
+        coreutils.string(),
+        which.string(),
+        cc.string(),
+        clang_tools.string());
+
     json env = spec.extraEnv;
     env["name"] = spec.name;
-    env["PATH"] = spec.path;
+    env["PATH"] = spec.path.empty() ? core_path : core_path + ":" + spec.path;
     env["linkPhase"] = spec.linkPhase;
     env["buildPhase"] = spec.buildPhase;
     env["installPhase"] = spec.installPhase;
@@ -23,10 +37,20 @@ Result<nix::StorePath> writeDerivation(
     env["requiredSystemFeatures"] = "recursive-nix";
     env["out"] = nix::hashPlaceholder("out");
 
+    json inputSrcs = json::array({
+        bash.filename().string(),
+        coreutils.filename().string(),
+        which.filename().string(),
+        cc.filename().string(),
+        clang_tools.filename().string(),
+    });
+    for (const auto& input : spec.inputSrcs)
+        inputSrcs.push_back(input);
+
     const json drv = {
         { "name", spec.name },
         { "system", spec.system },
-        { "builder", spec.builder },
+        { "builder", (bash / "bin" / "bash").string() },
         { "version", 4u },
         {
             "args",
@@ -35,7 +59,7 @@ Result<nix::StorePath> writeDerivation(
         },
         { "env", env },
         { "inputs", {
-                        { "srcs", spec.inputSrcs },
+                        { "srcs", inputSrcs },
                         { "drvs", spec.inputDrvs },
                     } },
         { "outputs", {

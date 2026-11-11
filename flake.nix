@@ -28,6 +28,16 @@
 				f (pkgsFor system));
 	in {
 		overlays.default = final: prev: {
+			corePackages = with final; [
+				bash
+				coreutils
+				which
+				stdenv.cc
+				clang-tools
+			];
+
+			corePath = final.lib.makeBinPath final.corePackages;
+
 			# C++ dependency scanner
 			nixja-scan-deps =
 				final.stdenv.mkDerivation {
@@ -35,9 +45,9 @@
 
 					src = self;
 
-					nativeBuildInputs = [
+					nativeBuildInputs = final.corePackages ++ [
 						final.cmake
-						final.clang-tools
+						final.makeWrapper
 						final.pkg-config
 					];
 
@@ -58,6 +68,11 @@
 						install -Dm755 src/nixja-scan-deps/nixja-scan-deps "$out/bin/nixja-scan-deps"
 						runHook postInstall
 					'';
+
+					postFixup = ''
+						wrapProgram $out/bin/nixja-scan-deps \
+							--prefix PATH : ${final.corePath}
+					'';
 				};
 
 			# C++ generator
@@ -67,9 +82,8 @@
 
 					src = self;
 
-					nativeBuildInputs = [
+					nativeBuildInputs = final.corePackages ++ [
 						final.cmake
-						final.clang-tools
 						final.makeWrapper
 						final.pkg-config
 					];
@@ -99,9 +113,8 @@
 					postFixup = ''
 						wrapProgram $out/bin/nixja-gen \
 							--prefix PATH : ${final.lib.makeBinPath [
-								final.ninja
-								final.clang-tools
-							]}
+								final.nixja-scan-deps
+							]}:${final.corePath}
 					'';
 				};
 
@@ -112,9 +125,8 @@
 
 					src = self;
 
-					nativeBuildInputs = [
+					nativeBuildInputs = final.corePackages ++ [
 						final.cmake
-						final.clang-tools
 						final.makeWrapper
 						final.pkg-config
 					];
@@ -146,7 +158,7 @@
 							--prefix PATH : ${final.lib.makeBinPath [
 								final.nix
 								final.nixja-gen
-							]}
+							]}:${final.corePath}
 					'';
 				};
 		};
@@ -192,9 +204,8 @@
 						(pkgs.mkShell.override {
 								stdenv = llvmPkgs.stdenv;
 							}) {
-							packages = with pkgs; [
+							packages = pkgs.corePackages ++ (with pkgs; [
 								# C++ development
-								llvmPkgs.clang-tools
 								cmake
 								ninja
 								nlohmann_json
@@ -211,7 +222,7 @@
 								bear
 								gnumake
 								jq
-							];
+							]);
 
 							shellHook = ''
 								export UV_PYTHON_DOWNLOADS=never

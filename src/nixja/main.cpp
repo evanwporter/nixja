@@ -21,7 +21,6 @@
 #include <unistd.h>
 
 #include "common.hpp"
-#include "toolchain.hpp"
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -91,48 +90,25 @@ Result<std::string> build_drv_file(
 
     const std::string generatorName = target + ".drv";
 
-    const std::string command = fmt::format("cd source && {} {}", toolchain::nixja_gen, target);
-
-    // These are the tools that must be on the path
-    // const auto nixja_gen_path = TRY(parse_which("nixja-gen", store));
-    // const auto nixja_scan_deps_path = TRY(parse_which("nixja-scan-deps", store));
-    const auto coreutils_path = TRY(parse_which("cp", store));
-    const auto cc_path = TRY(parse_which("cc", store));
-    const auto clang_tools_path = TRY(parse_which("clang-scan-deps", store));
-    const auto bash_path = TRY(parse_which("bash", store));
+    const fs::path nixja_gen_path = NIXJA_GEN_PATH;
+    const std::string command = fmt::format("cd source && {} {}", nixja_gen_path.string(), target);
 
     const std::string installPhase = "cp \"$NIXJA_GEN\" \"$out\"; ";
-    const std::string buildPhase = std::format(R"NIXJA(NIXJA_GEN=$({}); echo $NIXJA_GEN; )NIXJA", command);
-
-    const char* bashBuilder = toolchain::bash;
-    const std::string buildPath = fmt::format("{}/bin:{}/bin:{}/bin", coreutils_path.string(), cc_path.string(), clang_tools_path.string());
+    const std::string buildPhase = std::format("NIXJA_GEN=$({}); echo $NIXJA_GEN;", command);
 
     std::vector<std::string> inputSrcs;
     inputSrcs.push_back(fs::path(source_store_path).filename().string());
-    inputSrcs.push_back(coreutils_path.filename().string());
-    inputSrcs.push_back(cc_path.filename().string());
-    inputSrcs.push_back(bash_path.filename().string());
-
-    inputSrcs.push_back(clang_tools_path.filename().string());
-
-    if (toolchain::nixja_gen_store_name[0] != '\0')
-        inputSrcs.push_back(toolchain::nixja_gen_store_name);
-
-    // Libraries needed by nixja-gen
-    inputSrcs.push_back(
-        fs::path(toolchain::nix_store_package_path).filename().string());
-    inputSrcs.push_back(
-        fs::path(toolchain::nix_util_package_path).filename().string());
-    inputSrcs.push_back(
-        fs::path(toolchain::fmt_package_path).filename().string());
+    if (nixja_gen_path.is_absolute())
+        inputSrcs.push_back(nixja_gen_path.parent_path().parent_path().filename().string());
+    inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
 
     json inputDrvs = json::object();
 
     const auto generator_drv_path = TRY(writeDerivation(store, {
                                                                    .name = generatorName,
                                                                    .system = "x86_64-linux",
-                                                                   .builder = bashBuilder,
-                                                                   .path = buildPath,
                                                                    .linkPhase = linkPhase,
                                                                    .buildPhase = buildPhase,
                                                                    .installPhase = installPhase,
@@ -163,13 +139,11 @@ Result<std::string> build_drv_file(
     const auto finalDrvPath = TRY(writeDerivation(store, {
                                                              .name = target,
                                                              .system = "x86_64-linux",
-                                                             .builder = bashBuilder,
-                                                             .path = toolchain::coreutils_bin_dir,
                                                              .linkPhase = "",
                                                              .buildPhase = "",
                                                              .installPhase = "cp -r \"$input\" \"$out\"",
                                                              .outputMethod = "nar",
-                                                             .inputSrcs = json::array({ toolchain::bash_store_name, toolchain::coreutils_store_name }),
+                                                             .inputSrcs = json::array(),
                                                              .inputDrvs = finalInputDrvs,
                                                              .extraEnv = {
                                                                  { "input", generated_output.render() },

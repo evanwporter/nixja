@@ -2,6 +2,13 @@ add_executable(nixja-gen ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
 
 target_compile_options(nixja-gen PRIVATE -Uunix)
 
+target_compile_definitions(nixja-gen PRIVATE
+    NIXJA_SCAN_DEPS_PATH="${nixjaScanDeps}"
+    NIX_STORE_PACKAGE_PATH="${NIX_STORE_PACKAGE_PATH}"
+    NIX_UTIL_PACKAGE_PATH="${NIX_UTIL_PACKAGE_PATH}"
+    FMT_PACKAGE_PATH="${FMT_PACKAGE_PATH}"
+)
+
 target_link_libraries(nixja-gen PRIVATE
     nixja-common
     libninja

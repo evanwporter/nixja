@@ -24,7 +24,6 @@
 #include <nix/util/posix-source-accessor.hh>
 
 #include "common.hpp"
-#include "toolchain.hpp"
 
 #include "disk_interface.h"
 #include "graph.h"
@@ -127,10 +126,7 @@ Result<void> create_derivation(
         "mkdir -p \"$NIX_BUILD_TOP\"; cp -rs {}/. \"$NIX_BUILD_TOP\"; ",
         source_store_path);
 
-    // Toolchain configuration.
-    const char* bashBuilder = toolchain::bash;
-
-    const char* buildPath = toolchain::build_path;
+    const fs::path nixja_scan_deps_path = NIXJA_SCAN_DEPS_PATH;
 
     // Collect source inputs.
     std::vector<std::string> inputSrcs;
@@ -138,18 +134,11 @@ Result<void> create_derivation(
     inputSrcs.push_back(
         fs::path(source_store_path).filename().string());
 
-    inputSrcs.push_back(toolchain::clang_tools_store_name);
-    inputSrcs.push_back(toolchain::bash_store_name);
-    inputSrcs.push_back(toolchain::coreutils_store_name);
-    inputSrcs.push_back(toolchain::cc_store_name);
-    if (toolchain::nixja_scan_deps_store_name[0] != '\0')
-        inputSrcs.push_back(toolchain::nixja_scan_deps_store_name);
-    inputSrcs.push_back(
-        fs::path(toolchain::nix_store_package_path).filename().string());
-    inputSrcs.push_back(
-        fs::path(toolchain::nix_util_package_path).filename().string());
-    inputSrcs.push_back(
-        fs::path(toolchain::fmt_package_path).filename().string());
+    if (nixja_scan_deps_path.is_absolute())
+        inputSrcs.push_back(nixja_scan_deps_path.parent_path().parent_path().filename().string());
+    inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
 
     // Collect input derivations.
     json inputDrvs = json::object();
@@ -183,15 +172,9 @@ Result<void> create_derivation(
 
     auto completeSpec = spec;
     completeSpec.system = "x86_64-linux";
-    completeSpec.builder = bashBuilder;
-    completeSpec.path = buildPath;
     completeSpec.linkPhase = linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
-    completeSpec.extraEnv = {
-        { "NIXJA_PATH", buildPath },
-        { "NIXJA_BASH", bashBuilder },
-    };
     const auto drv_path = TRY(writeDerivation(store, completeSpec));
 
     // Resolve output paths.
@@ -292,7 +275,7 @@ Result<void> process_dep_edge(
 
     const std::string nixja_scan_deps = fmt::format(
         "{} -i TODO -o {} -- {}",
-        toolchain::nixja_scan_deps,
+        NIXJA_SCAN_DEPS_PATH,
         outputs_str,
         command);
 

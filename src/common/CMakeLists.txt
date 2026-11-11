@@ -1,15 +1,5 @@
 add_library(nixja-common STATIC common.cpp)
 
-configure_file(
-    "${CMAKE_CURRENT_SOURCE_DIR}/toolchain.hpp.in"
-    "${CMAKE_CURRENT_BINARY_DIR}/toolchain.hpp"
-    @ONLY
-)
-
-target_sources(nixja-common PUBLIC
-    "${NIXJA_TOOLCHAIN_HEADER}"
-)
-
 target_link_libraries(nixja-common PUBLIC
     PkgConfig::NIX_STORE
     nlohmann_json::nlohmann_json
@@ -18,7 +8,6 @@ target_link_libraries(nixja-common PUBLIC
 
 target_include_directories(nixja-common PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 target_precompile_headers(nixja-common PRIVATE
