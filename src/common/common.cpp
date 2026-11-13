@@ -9,9 +9,19 @@
 
 namespace fs = std::filesystem;
 
-Result<nix::StorePath> writeDerivation(
+std::string nixja_store_name(const std::string_view name) {
+    if (name.starts_with("nixja-"))
+        return std::string(name);
+
+    return "nixja-" + std::string(name);
+}
+
+/// TODO: think about moving this out of the header file
+Result<nix::Derivation> buildDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec) {
+
+    const std::string derivation_name = nixja_store_name(spec.name);
 
     /// Core packages which every nixja* must have at access to at runtime
     const auto bash = TRY(parse_which("bash", store));
@@ -29,7 +39,7 @@ Result<nix::StorePath> writeDerivation(
         clang_tools.string());
 
     json env = spec.extraEnv;
-    env["name"] = spec.name;
+    env["name"] = derivation_name;
     env["PATH"] = spec.path.empty() ? core_path : core_path + ":" + spec.path;
     env["linkPhase"] = spec.linkPhase;
     env["buildPhase"] = spec.buildPhase;
@@ -50,7 +60,7 @@ Result<nix::StorePath> writeDerivation(
         inputSrcs.push_back(input);
 
     const json drv = {
-        { "name", spec.name },
+        { "name", derivation_name },
         { "system", spec.system },
         { "builder", (bash / "bin" / "bash").string() },
         { "version", 4u },
@@ -72,15 +82,25 @@ Result<nix::StorePath> writeDerivation(
                      } },
     };
 
-    const auto derivation = nix::Derivation::parseJsonAndValidate(*store, drv);
+    return nix::Derivation::parseJsonAndValidate(*store, drv);
+}
 
+Result<nix::StorePath> writeDerivation(
+    const nix::ref<nix::Store>& store,
+    const DerivationSpec& spec) {
+
+    const auto derivation = TRY(buildDerivation(store, spec));
     return store->writeDerivation(derivation);
 }
 
-/// Execute shell command and capture stdout
-// Source - https://stackoverflow.com/a/478960
-// Posted by waqas, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-10-31, License - CC BY-SA 4.0
+Result<std::string> emitDerivation(
+    const nix::ref<nix::Store>& store,
+    const DerivationSpec& spec) {
+
+    const auto derivation = TRY(buildDerivation(store, spec));
+    return derivation.unparse(*store, false);
+}
+
 std::string exec(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;

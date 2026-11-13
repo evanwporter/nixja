@@ -96,6 +96,8 @@ struct DerivationSpec {
     /// Additional PATH entries, appended after the core packages.
     std::string path;
 
+    /// TODO: set defaults
+
     std::string linkPhase;
     std::string buildPhase;
     std::string installPhase;
@@ -110,10 +112,27 @@ struct DerivationSpec {
     json extraEnv;
 };
 
+/// Build up a nix derivation.
+Result<nix::Derivation> buildDerivation(
+    const nix::ref<nix::Store>& store,
+    const DerivationSpec& spec);
+
+/// Build a derivation and write it to the nix store. The return is the path in the store.
 Result<nix::StorePath> writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec);
 
+/// Build a derivation and emit it as a string.
+Result<std::string> emitDerivation(
+    const nix::ref<nix::Store>& store,
+    const DerivationSpec& spec);
+
+std::string nixja_store_name(std::string_view name);
+
+/// Execute shell command and capture stdout
+// Source - https://stackoverflow.com/a/478960
+// Posted by waqas, modified by community. See post 'Timeline' for change history
+// Retrieved 2026-10-31, License - CC BY-SA 4.0
 std::string exec(const char* cmd);
 
 Result<fs::path> parse_which(

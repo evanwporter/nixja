@@ -114,7 +114,7 @@ scan_dependencies(const std::string command) {
     }
 
     // Remove all dependencies that point outside of the root path
-    all_dependencies = local_dependencies(all_dependencies);
+    // all_dependencies = local_dependencies(all_dependencies);
 
     return all_dependencies;
 }
@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
         const fs::path file = fs::weakly_canonical(dependency);
 
         const auto stored = store->addToStore(
-            file.filename().string(),
+            nixja_store_name(file.filename().string()),
             nix::PosixSourceAccessor::createAtRoot(file),
             nix::ContentAddressMethod::Raw::Flat);
 
@@ -221,22 +221,23 @@ int main(int argc, char* argv[]) {
 
     const json inputDrvs = json::object();
 
-    const auto path = writeDerivation(store, {
-                                                 .name = name,
-                                                 .system = "x86_64-linux",
-                                                 .linkPhase = linkPhase,
-                                                 .buildPhase = command,
-                                                 .installPhase = installPhase,
-                                                 .outputMethod = "nar",
-                                                 .inputSrcs = inputSrcs,
-                                                 .inputDrvs = inputDrvs,
-                                             });
+    const auto derivation = emitDerivation(store, {
+                                                      .name = name,
+                                                      .system = "x86_64-linux",
+                                                      .linkPhase = linkPhase,
+                                                      .buildPhase = command,
+                                                      .installPhase = installPhase,
+                                                      .outputMethod = "nar",
+                                                      .inputSrcs = inputSrcs,
+                                                      .inputDrvs = inputDrvs,
+                                                  });
 
-    if (!path.has_value()) {
-        std::cerr << path.error() << std::endl;
+    if (!derivation.has_value()) {
+        std::cerr << derivation.error() << std::endl;
         return 1;
     }
 
-    std::cout << "/nix/store/" << path->to_string() << std::endl;
+    std::cout << derivation.value();
+
     return 0;
 }
