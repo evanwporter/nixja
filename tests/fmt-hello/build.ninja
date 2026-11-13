@@ -1,0 +1,10 @@
+cxx = c++
+fmt = /nix/store/d0bpdc960m11k61jkl5h2wmxz69kc2q7-fmt-12.2.0
+
+rule cxx
+  command = $cxx -std=c++23 -I$fmt/include $in -o $out -L$fmt/lib -lfmt
+  description = CXX $out
+
+build hello: cxx main.cpp
+
+default hello

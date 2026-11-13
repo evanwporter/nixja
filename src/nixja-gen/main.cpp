@@ -15,6 +15,21 @@
 #include <nix/store/store-api.hh>
 #include <nlohmann/json.hpp>
 
+#include <clang/Basic/Diagnostic.h>
+#include <clang/Basic/DiagnosticOptions.h>
+#include <clang/Driver/Compilation.h>
+#include <clang/Driver/Driver.h>
+#include <clang/Driver/Job.h>
+#include <clang/Driver/Tool.h>
+#include <clang/Frontend/CompilerInstance.h>
+#include <clang/Frontend/CompilerInvocation.h>
+
+#include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/SmallVector.h>
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/StringSaver.h>
+#include <llvm/TargetParser/Host.h>
+
 #include "common.hpp"
 
 #include "disk_interface.h"
@@ -262,23 +277,17 @@ Result<void> process_dep_edge(
     for (const auto& output : edge->outputs_)
         outputs_str += output->path();
 
-    const std::string nixja_scan_deps = fmt::format(
-        "{} -i TODO -o {} -- {}",
+    const std::string buildPhase = std::format(
+        "{} -i TODO -o {} -- {} > \"$out\"",
         NIXJA_SCAN_DEPS_PATH,
         outputs_str,
         command);
-
-    const std::string installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"; ";
-
-    const std::string buildPhase = std::format(
-        R"NIXJA(NIXJA_SCAN_DEPS="$({})"; echo $NIXJA_SCAN_DEPS; )NIXJA",
-        nixja_scan_deps);
 
     // Configure derivation.
     const DerivationSpec spec {
         .name = derivationName,
         .buildPhase = buildPhase,
-        .installPhase = installPhase,
+        .installPhase = "",
         .outputMethod = "text",
     };
 
@@ -289,6 +298,7 @@ Result<void> process_dep_edge(
 
 /// Kahns Algorithm
 /// See LC Course Scheduling
+/// TODO: only process target closure
 Result<void> topo_process(
     const State& state,
     const nix::ref<nix::Store> store,
@@ -339,7 +349,7 @@ Result<void> topo_process(
     const fs::path source_dir = fs::canonical(fs::current_path());
 
     const auto stored = store->addToStore(
-        source_dir.filename().string(), // "nixja", not "."
+        nixja_store_name(source_dir.filename().string()),
         nix::PosixSourceAccessor::createAtRoot(source_dir),
         nix::ContentAddressMethod::Raw::NixArchive);
 
@@ -355,6 +365,8 @@ Result<void> topo_process(
             TRY(process_dep_edge(edge, source_store_path, store, edge_map));
         else
             TRY(process_standard_edge(edge, source_store_path, store, edge_map));
+
+        parseCommand(edge->EvaluateCommand());
 
         for (const auto neighbor : consumers[edge->id_]) {
             indegree[neighbor->id_]--;

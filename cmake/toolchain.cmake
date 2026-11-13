@@ -4,6 +4,7 @@
 find_program(BASH_PROGRAM bash REQUIRED)
 find_program(CP_PROGRAM cp REQUIRED)
 find_program(CC_PROGRAM cc REQUIRED)
+find_program(CLANG_PROGRAM clang REQUIRED)
 find_program(CLANG_SCAN_DEPS_PROGRAM clang-scan-deps REQUIRED)
 
 # Local builds use the binaries staged in the project directory. Packaged
@@ -78,3 +79,6 @@ nixja_store_path_from_path("${NIX_STORE_SHARED_LIBRARY_REALPATH}" NIX_STORE_PACK
 nixja_store_path_from_path("${NIX_UTIL_SHARED_LIBRARY_REALPATH}" NIX_UTIL_PACKAGE_PATH)
 nixja_store_path_from_path("${FMT_SHARED_LIBRARY_REALPATH}" FMT_PACKAGE_PATH)
 nixja_store_path_from_path("${nlohmann_json_DIR}" NLOHMANN_JSON_PACKAGE_PATH)
+nixja_store_path_from_path("${CC_PROGRAM}" CC_PACKAGE_PATH)
+nixja_store_path_from_path("${CLANG_PROGRAM}" CLANG_PACKAGE_PATH)
+nixja_store_path_from_path("${LLVM_LIBRARY_DIRS}" LLVM_PACKAGE_PATH)
