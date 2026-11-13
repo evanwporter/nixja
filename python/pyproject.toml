@@ -11,14 +11,14 @@ dependencies = ["jinja2"]
 nixja = "nixja.nixja:main"
 nixja-gen = "nixja.nixja_gen:main"
 
-[tool.setuptools.package-data]
-nixja = ["*.j2", "nixja-gen.py"]
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
 
 [tool.pyrefly]
 project-includes = ["src", "hello"]
 search-path = ["src"]
 preset = "default"
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+[tool.setuptools.package-data]
+nixja = ["*.j2", "nixja-gen.py"]
