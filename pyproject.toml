@@ -1,0 +1,5 @@
+[tool.pyrefly]
+project-includes = ["scripts/**/*.py"]
+project-excludes = ["**/__pycache__"]
+python-version = "3.13"
+preset = "default"
