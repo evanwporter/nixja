@@ -10,7 +10,7 @@ This is good for CI builds where the /nix/store/ is kept between runs.
 
 The major downside, and why its not good for local builds is that every run we need scan every source file for dependencies. This necessary for purity.
 
-## Milestones / Todo
+## Todo
 
 1. ~~Initial write in python using pyn~~
 
@@ -18,7 +18,9 @@ The major downside, and why its not good for local builds is that every run we n
 
 3. Swapping out clang-scan-deps for the literal clang-scan-deps (ie: linking to llvm)
 
-4. Providing a method to cache dependencies between runs. Probably by symlinking a file in the nix store to a local file
+4. Providing a method to cache dependencies between runs. Probably by symlinking a dep file in the nix store to a local file
+    - NOTE: doing this is impure
+    - I could add a deps.json to `$out/misc/deps.json`. This would get linked to `./result`
 
 5. Figure out how to garbage collect old artifacts from the store automatically
 
@@ -30,15 +32,32 @@ The major downside, and why its not good for local builds is that every run we n
 
 9. Add tests
 
-10. Perhaps switch over to using stable? Nix C-API
+10. Perhaps switch over to using stable? Nix C-API (unlikely)
 
-11. Perhaps rewrite in C99 using SAMU instead of NINJA (unlikely)
+11. Perhaps rewrite in C99 using SAMU instead of NINJA (unlikely) (related goal #10)
 
 12. CMAKE -> MESON
 
-13. Create DRV files instead of converting from JSON
+13. ~~Create DRV files instead of converting from JSON~~
 
-14. Create common library with common functions
+14. ~~Create common library with common functions~~
+
+15. Think about how to handle `$$(pkg-config xxx)` in ninja files
+    - Perhaps its best to perform dep discovery w/i the outer derivation of nixja-scan-deps
+
+16. Simplify (see goal #8)
+
+17. Figure out a longer term solution to linking the three binaries to my target workspace directory for cmake builds
+
+18. Visualize build tree [Nix#16823](https://github.com/NixOS/nix/issues/16823)
+
+19. Test if I can integrate this into `meson`
+
+20. Use the nix socket inside build sandboxes as described in nix-ninja
+
+21. Define a way to pass outside env into the derivation
+
+22. Find a way to batch scan dependencies so I can utilize a shared cache
 
 ## Rationale
 
