@@ -66,7 +66,7 @@ Result<std::string> build_drv_file(
     };
 
     const auto stored = store->addToStore(
-        nixja_store_name("source"),
+        nixja_store_name("source", "nixja"),
         nix::PosixSourceAccessor::createAtRoot(project_root),
         nix::ContentAddressMethod::Raw::NixArchive,
         nix::HashAlgorithm::SHA256,

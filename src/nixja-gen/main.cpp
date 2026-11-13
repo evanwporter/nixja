@@ -243,6 +243,7 @@ Result<void> process_standard_edge(
     // Configure derivation.
     const DerivationSpec spec {
         .name = derivationName,
+        .storeNamePrefix = "nixja-gen",
         .buildPhase = buildPhase,
         .installPhase = installPhase,
         .outputMethod = "nar",
@@ -286,6 +287,7 @@ Result<void> process_dep_edge(
     // Configure derivation.
     const DerivationSpec spec {
         .name = derivationName,
+        .storeNamePrefix = "nixja-gen",
         .buildPhase = buildPhase,
         .installPhase = "",
         .outputMethod = "text",
@@ -349,7 +351,7 @@ Result<void> topo_process(
     const fs::path source_dir = fs::canonical(fs::current_path());
 
     const auto stored = store->addToStore(
-        nixja_store_name(source_dir.filename().string()),
+        nixja_store_name(source_dir.filename().string(), "nixja-gen"),
         nix::PosixSourceAccessor::createAtRoot(source_dir),
         nix::ContentAddressMethod::Raw::NixArchive);
 

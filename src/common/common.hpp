@@ -91,6 +91,8 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
 
 struct DerivationSpec {
     std::string name;
+    /// Namespace for store objects created by the executable producing this derivation.
+    std::string storeNamePrefix = "nixja";
     std::string system;
 
     /// Additional PATH entries, appended after the core packages.
@@ -127,7 +129,7 @@ Result<std::string> emitDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec);
 
-std::string nixja_store_name(std::string_view name);
+std::string nixja_store_name(std::string_view name, std::string_view prefix);
 
 /// Execute shell command and capture stdout
 // Source - https://stackoverflow.com/a/478960

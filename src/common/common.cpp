@@ -9,11 +9,12 @@
 
 namespace fs = std::filesystem;
 
-std::string nixja_store_name(const std::string_view name) {
-    if (name.starts_with("nixja-"))
+std::string nixja_store_name(const std::string_view name, const std::string_view prefix) {
+    const std::string prefix_with_separator = std::string(prefix) + "-";
+    if (name.starts_with(prefix_with_separator))
         return std::string(name);
 
-    return "nixja-" + std::string(name);
+    return prefix_with_separator + std::string(name);
 }
 
 /// TODO: think about moving this out of the header file
@@ -21,7 +22,7 @@ Result<nix::Derivation> buildDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec) {
 
-    const std::string derivation_name = nixja_store_name(spec.name);
+    const std::string derivation_name = nixja_store_name(spec.name, spec.storeNamePrefix);
 
     /// Core packages which every nixja* must have at access to at runtime
     const auto bash = TRY(parse_which("bash", store));

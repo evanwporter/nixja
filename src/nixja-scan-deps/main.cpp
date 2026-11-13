@@ -190,7 +190,7 @@ int main(int argc, char* argv[]) {
         const fs::path file = fs::weakly_canonical(dependency);
 
         const auto stored = store->addToStore(
-            nixja_store_name(file.filename().string()),
+            nixja_store_name(file.filename().string(), "nixja-scan-deps"),
             nix::PosixSourceAccessor::createAtRoot(file),
             nix::ContentAddressMethod::Raw::Flat);
 
@@ -223,6 +223,7 @@ int main(int argc, char* argv[]) {
 
     const auto derivation = emitDerivation(store, {
                                                       .name = name,
+                                                      .storeNamePrefix = "nixja-scan-deps",
                                                       .system = "x86_64-linux",
                                                       .linkPhase = linkPhase,
                                                       .buildPhase = command,
