@@ -7,6 +7,9 @@ target_compile_definitions(nixja-gen PRIVATE
     NIX_STORE_PACKAGE_PATH="${NIX_STORE_PACKAGE_PATH}"
     NIX_UTIL_PACKAGE_PATH="${NIX_UTIL_PACKAGE_PATH}"
     FMT_PACKAGE_PATH="${FMT_PACKAGE_PATH}"
+    CC_PACKAGE_PATH="${CC_PACKAGE_PATH}"
+    CLANG_PACKAGE_PATH="${CLANG_PACKAGE_PATH}"
+    LLVM_PACKAGE_PATH="${LLVM_PACKAGE_PATH}"
 )
 
 target_link_libraries(nixja-gen PRIVATE
@@ -16,6 +19,9 @@ target_link_libraries(nixja-gen PRIVATE
     PkgConfig::NIX_STORE
     nlohmann_json::nlohmann_json
     fmt::fmt
+    clangDriver
+    clangBasic
+    LLVMSupport
 )
 
 target_precompile_headers(nixja-gen PRIVATE
@@ -31,4 +37,6 @@ target_precompile_headers(nixja-gen PRIVATE
 
 target_include_directories(nixja-gen PRIVATE
     ${CMAKE_SOURCE_DIR}/external/ninja/src
+    ${LLVM_INCLUDE_DIRS}
+    ${CLANG_INCLUDE_DIRS}
 )

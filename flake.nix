@@ -45,16 +45,23 @@
 
 					src = self;
 
-					nativeBuildInputs = final.corePackages ++ [
-						final.cmake
-						final.makeWrapper
-						final.pkg-config
-					];
+					nativeBuildInputs =
+						final.corePackages
+						++ [
+							final.cmake
+							final.makeWrapper
+							final.pkg-config
+						];
 
 					buildInputs = [
+						final.argparse
 						final.fmt
+						final.libblake3
 						final.nlohmann_json
 						final.nix
+						final.llvmPackages_22.llvm
+						final.llvmPackages_22.clang
+						final.llvmPackages_22.clang-unwrapped
 					];
 
 					cmakeBuildType = "Release";
@@ -82,16 +89,23 @@
 
 					src = self;
 
-					nativeBuildInputs = final.corePackages ++ [
-						final.cmake
-						final.makeWrapper
-						final.pkg-config
-					];
+					nativeBuildInputs =
+						final.corePackages
+						++ [
+							final.cmake
+							final.makeWrapper
+							final.pkg-config
+						];
 
 					buildInputs = [
+						final.argparse
 						final.fmt
+						final.libblake3
 						final.nlohmann_json
 						final.nix
+						final.llvmPackages_22.llvm
+						final.llvmPackages_22.clang
+						final.llvmPackages_22.clang-unwrapped
 					];
 
 					cmakeBuildType = "Release";
@@ -125,16 +139,23 @@
 
 					src = self;
 
-					nativeBuildInputs = final.corePackages ++ [
-						final.cmake
-						final.makeWrapper
-						final.pkg-config
-					];
+					nativeBuildInputs =
+						final.corePackages
+						++ [
+							final.cmake
+							final.makeWrapper
+							final.pkg-config
+						];
 
 					buildInputs = [
+						final.argparse
 						final.fmt
+						final.libblake3
 						final.nlohmann_json
 						final.nix
+						final.llvmPackages_22.llvm
+						final.llvmPackages_22.clang
+						final.llvmPackages_22.clang-unwrapped
 					];
 
 					cmakeBuildType = "Release";
@@ -204,27 +225,41 @@
 						(pkgs.mkShell.override {
 								stdenv = llvmPkgs.stdenv;
 							}) {
-							packages = pkgs.corePackages ++ (with pkgs; [
-								# C++ development
-								cmake
-								ninja
-								nlohmann_json
-								pkg-config
-								fmt
-								ccache
-								argparse
+							packages =
+								pkgs.corePackages
+								++ (with pkgs;
+										[
+											# C++ development
+											cmake
+											meson
+											ninja
+											nlohmann_json
+											pkg-config
+											fmt
+											ccache
+											argparse
 
-								# Nix
-								nix
-								boost # https://github.com/NixOS/nix/issues/13782
+											# Nix
+											nix
+											boost # https://github.com/NixOS/nix/issues/13782
 
-								# Utilities
-								bear
-								gnumake
-								jq
-							]);
+											# Utilities
+											bear
+											gnumake
+											jq
+
+											# Python
+											uv
+											python313
+										]
+										++ (with llvmPkgs; [
+												llvm
+												clang
+												clang-tools
+											]));
 
 							shellHook = ''
+								export Clang_DIR="${llvmPkgs.clang-unwrapped.dev}/lib/cmake/clang"
 								export UV_PYTHON_DOWNLOADS=never
 								export UV_PYTHON="${pkgs.python313}/bin/python3"
 							'';
