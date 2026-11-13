@@ -18,7 +18,7 @@ The major downside, and why its not good for local builds is that every run we n
 
 3. Swapping out clang-scan-deps for the literal clang-scan-deps (ie: linking to llvm)
 
-4. Providing a method to cache dependencies between runs. Probably by symlinking a file in the nix store to a local file
+4. Providing a method to cache dependencies between runs. Probably by symlinking a dep file in the nix store to a local file
 
 5. Figure out how to garbage collect old artifacts from the store automatically
 
@@ -36,9 +36,12 @@ The major downside, and why its not good for local builds is that every run we n
 
 12. CMAKE -> MESON
 
-13. Create DRV files instead of converting from JSON
+13. ~~Create DRV files instead of converting from JSON~~
 
-14. Create common library with common functions
+14. ~~Create common library with common functions~~
+
+15. Think about how to handle `$$(pkg-config xxx)` in ninja files
+    - Perhaps its best to perform dep discovery w/i the outer derivation of nixja-scan-deps
 
 ## Rationale
 
