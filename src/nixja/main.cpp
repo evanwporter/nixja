@@ -66,7 +66,7 @@ Result<std::string> build_drv_file(
     };
 
     const auto stored = store->addToStore(
-        "source",
+        nixja_store_name("source"),
         nix::PosixSourceAccessor::createAtRoot(project_root),
         nix::ContentAddressMethod::Raw::NixArchive,
         nix::HashAlgorithm::SHA256,
@@ -95,6 +95,7 @@ Result<std::string> build_drv_file(
     inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(LLVM_PACKAGE_PATH).filename().string());
 
     json inputDrvs = json::object();
 
@@ -127,6 +128,7 @@ Result<std::string> build_drv_file(
                                                        } },
     };
 
+    // Outputs nixja-target.drv
     const auto finalDrvPath = TRY(writeDerivation(store, {
                                                              .name = target,
                                                              .system = "x86_64-linux",
@@ -174,7 +176,7 @@ int main(int argc, char* argv[]) {
     // dynamic output and build the derivation it emits.
     // TODO: don't use nix-build (so we don't have to require recursive-nix in parent drv)
     // to solve this I might need to steal stuff from nix-ninja
-    run_command({ "nix-build", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", "/nix/store/" + drv_path });
+    run_command({ "nix-build", "--quiet", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", "/nix/store/" + drv_path });
 
     return 0;
 }
