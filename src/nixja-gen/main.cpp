@@ -73,6 +73,52 @@ struct Derivation {
     std::string output_path;
 };
 
+struct SearchPaths {
+    std::vector<std::string> include;
+    std::vector<std::string> library;
+};
+
+/// This function parses a compilation command using the LLVM TOKENIZER.
+/// It returns a list of the include paths and the library paths.
+SearchPaths parseCommand(const std::string& command) {
+
+    /// Parse the command into a vector of char*
+    llvm::BumpPtrAllocator allocator;
+    llvm::StringSaver saver(allocator);
+    llvm::SmallVector<const char*> args;
+    llvm::cl::TokenizeGNUCommandLine(command, saver, args);
+
+    SearchPaths paths;
+    for (size_t i = 1; i < args.size(); ++i) {
+        llvm::StringRef arg(args[i]);
+        // Handle `-I <path>`
+        if (arg == "-I" && i + 1 < args.size())
+            paths.include.emplace_back(args[++i]);
+
+        // Handle -I<path>
+        else if (arg.starts_with("-I") && arg.size() > 2)
+            paths.include.push_back(arg.drop_front(2).str());
+
+        // Handle -L <path>
+        else if (arg == "-L" && i + 1 < args.size())
+            paths.library.emplace_back(args[++i]);
+
+        // Handle `-L<path>`
+        else if (arg.starts_with("-L") && arg.size() > 2)
+            paths.library.push_back(arg.drop_front(2).str());
+    }
+
+    // std::cout << "Include directories:\n";
+    // for (const auto& path : paths.include)
+    //     std::cout << "  " << path << '\n';
+    //
+    // std::cout << "Library directories:\n";
+    // for (const auto& path : paths.library)
+    //     std::cout << "  " << path << '\n';
+
+    return paths;
+}
+
 /// Returns the command with the inputs appropriately substituted
 /// TODO: This is a bad way of doing it I think. Better to hack onto EvaluateCommand somehow
 std::string command_for(
