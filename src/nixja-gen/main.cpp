@@ -13,6 +13,7 @@
 
 #include <fmt/format.h>
 #include <nix/store/store-api.hh>
+#include <nix/util/source-accessor.hh>
 #include <nlohmann/json.hpp>
 
 #include <clang/Basic/Diagnostic.h>
@@ -398,7 +399,7 @@ Result<void> topo_process(
 
     const auto stored = store->addToStore(
         nixja_store_name(source_dir.filename().string(), "nixja-gen"),
-        nix::PosixSourceAccessor::createAtRoot(source_dir),
+        nix::makeFSSourceAccessor(source_dir),
         nix::ContentAddressMethod::Raw::NixArchive);
 
     const std::string source_store_path = store->printStorePath(stored);

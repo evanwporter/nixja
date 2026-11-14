@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include <nix/store/store-api.hh>
+#include <nix/util/source-accessor.hh>
 
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
@@ -191,7 +192,7 @@ int main(int argc, char* argv[]) {
 
         const auto stored = store->addToStore(
             nixja_store_name(file.filename().string(), "nixja-scan-deps"),
-            nix::PosixSourceAccessor::createAtRoot(file),
+            nix::makeFSSourceAccessor(file),
             nix::ContentAddressMethod::Raw::Flat);
 
         store_paths.emplace(

@@ -15,5 +15,5 @@ target_precompile_headers(nixja-scan-deps PRIVATE
     <nix/store/store-api.hh>
     <nix/store/store-dir-config.hh>
     <nix/store/store-open.hh>
-    <nix/util/posix-source-accessor.hh>
+    <nix/util/source-accessor.hh>
 )

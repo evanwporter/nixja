@@ -7,6 +7,7 @@
 #include <argparse/argparse.hpp>
 #include <fmt/format.h>
 #include <nix/store/store-api.hh>
+#include <nix/util/source-accessor.hh>
 #include <nlohmann/json.hpp>
 
 #include <sys/wait.h>
@@ -67,7 +68,7 @@ Result<std::string> build_drv_file(
 
     const auto stored = store->addToStore(
         nixja_store_name("source", "nixja"),
-        nix::PosixSourceAccessor::createAtRoot(project_root),
+        nix::makeFSSourceAccessor(project_root),
         nix::ContentAddressMethod::Raw::NixArchive,
         nix::HashAlgorithm::SHA256,
         { },
@@ -176,7 +177,7 @@ int main(int argc, char* argv[]) {
     // dynamic output and build the derivation it emits.
     // TODO: don't use nix-build (so we don't have to require recursive-nix in parent drv)
     // to solve this I might need to steal stuff from nix-ninja
-    run_command({ "nix-build", "--quiet", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", "/nix/store/" + drv_path });
+    run_command({ "nix", "build", "--quiet", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", "/nix/store/" + drv_path + "^out" });
 
     return 0;
 }

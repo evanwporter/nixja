@@ -32,7 +32,7 @@ target_precompile_headers(nixja-gen PRIVATE
     <nix/store/store-api.hh>
     <nix/store/store-dir-config.hh>
     <nix/store/store-open.hh>
-    <nix/util/posix-source-accessor.hh>
+    <nix/util/source-accessor.hh>
 )
 
 target_include_directories(nixja-gen PRIVATE
