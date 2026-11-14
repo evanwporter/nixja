@@ -32,7 +32,7 @@ The major downside, and why its not good for local builds is that every run we n
 
 9. Add tests
 
-10. Perhaps switch over to using stable? Nix C-API (unlikely)
+10. Perhaps switch over to using stable? Nix C-API (kinda likely -- switching from 2.34 -> 2.35 was a pain)
 
 11. Perhaps rewrite in C99 using SAMU instead of NINJA (unlikely) (related goal #10)
 
@@ -58,6 +58,20 @@ The major downside, and why its not good for local builds is that every run we n
 21. Define a way to pass outside env into the derivation
 
 22. Find a way to batch scan dependencies so I can utilize a shared cache
+
+23. Integrate this into `meson` & `cmake`
+
+24. Add `-C` flag
+
+25. Make `nixja-tree.py` script only link folders and drv files (also drv files should be pprinted json)
+
+26. `nixja-tree.py` should have option to output graphviz like the ninja tool
+
+27. Clean up multiple source directories being added to store
+
+28. `nixja-tree.py` should remove current symlinks
+
+29. Add clean option
 
 ## Rationale
 
