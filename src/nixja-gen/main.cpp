@@ -67,6 +67,7 @@ struct Derivation {
     /// If `generates_drv` is true then this is not empty
     /// The output of this creats the output path.
     /// This comes from derivation_path
+    /// TODO: currently unused
     std::string generated_path;
 
     /// If `generates_drv` is true then this comes from the output of
@@ -249,7 +250,6 @@ Result<void> create_derivation(
         .generates_drv = generates_drv,
         .derivation_path = std::string(drv_path.to_string()),
         .derivation_store_path = store->printStorePath(drv_path),
-        .generated_path = generated_path,
         .output_path = output_path,
     };
 
@@ -403,8 +403,6 @@ Result<void> topo_process(
         nix::ContentAddressMethod::Raw::NixArchive);
 
     const std::string source_store_path = store->printStorePath(stored);
-
-    // std::cerr << "SOURCE STORE PATH " << source_store_path << std::endl;
 
     while (!queue.empty()) {
         const auto edge = queue.front();
