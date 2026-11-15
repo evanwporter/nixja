@@ -75,7 +75,7 @@ The major downside, and why its not good for local builds is that every run we n
 
 30. Make sure we are only compiling stuff in the `target` closure
 
-31. Im pretty sure nixja-gen and nixja can be combine. I just need to think about what would be lost by doing that.
+31. ~~Im pretty sure nixja-gen and nixja can be combine. I just need to think about what would be lost by doing that.~~
 
 32. Have nixja-scan-deps write directly to the store again and return the store path to the drv.
 

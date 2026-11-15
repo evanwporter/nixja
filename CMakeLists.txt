@@ -29,7 +29,6 @@ add_subdirectory(external/ninja)
 
 add_subdirectory(src/common)
 add_subdirectory(src/nixja)
-add_subdirectory(src/nixja-gen)
 add_subdirectory(src/nixja-scan-deps)
 
 # Keep the executables beside the example and direct Ninja test inputs. Their
@@ -38,21 +37,15 @@ add_custom_target(refresh-example-binaries ALL
  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/example/nixja"
  COMMAND ${CMAKE_COMMAND} -E create_hardlink
   "$<TARGET_FILE:nixja>" "${CMAKE_SOURCE_DIR}/example/nixja"
- COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/example/nixja-gen"
- COMMAND ${CMAKE_COMMAND} -E create_hardlink
-  "$<TARGET_FILE:nixja-gen>" "${CMAKE_SOURCE_DIR}/example/nixja-gen"
  COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/example/nixja-scan-deps"
  COMMAND ${CMAKE_COMMAND} -E create_hardlink
   "$<TARGET_FILE:nixja-scan-deps>" "${CMAKE_SOURCE_DIR}/example/nixja-scan-deps"
     COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja"
     COMMAND ${CMAKE_COMMAND} -E create_hardlink
         "$<TARGET_FILE:nixja>" "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja"
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-gen"
-    COMMAND ${CMAKE_COMMAND} -E create_hardlink
-        "$<TARGET_FILE:nixja-gen>" "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-gen"
     COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-scan-deps"
     COMMAND ${CMAKE_COMMAND} -E create_hardlink
         "$<TARGET_FILE:nixja-scan-deps>" "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-scan-deps"
-    DEPENDS nixja nixja-gen nixja-scan-deps
+    DEPENDS nixja nixja-scan-deps
     VERBATIM
 )

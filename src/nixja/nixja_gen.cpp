@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
-#include <iostream>
 #include <sstream>
 #include <string>
 #include <unordered_set>
@@ -32,6 +31,7 @@
 #include <llvm/TargetParser/Host.h>
 
 #include "common.hpp"
+#include "nixja_gen.hpp"
 
 #include "disk_interface.h"
 #include "graph.h"
@@ -397,10 +397,32 @@ Result<void> topo_process(
 
     const fs::path source_dir = fs::canonical(fs::current_path());
 
+    // Source-accessor filter paths are rooted at `/`, relative to source_dir.
+    nix::PathFilter source_filter = [&](const std::string& path) {
+        const fs::path local_path = source_dir / fs::path(path).relative_path();
+        std::error_code ec;
+
+        if (!fs::is_symlink(fs::symlink_status(local_path, ec)))
+            return true;
+
+        // Resolve symlinks (including relative links) without requiring the
+        // target to exist, so dangling links into /nix/store are excluded too.
+        const fs::path target = fs::weakly_canonical(local_path, ec);
+        if (ec)
+            return true;
+
+        const fs::path store_dir = "/nix/store";
+        auto relative = target.lexically_relative(store_dir);
+        return relative.empty() || (relative != "." && *relative.begin() == "..");
+    };
+
     const auto stored = store->addToStore(
         nixja_store_name(source_dir.filename().string(), "nixja-gen"),
         nix::makeFSSourceAccessor(source_dir),
-        nix::ContentAddressMethod::Raw::NixArchive);
+        nix::ContentAddressMethod::Raw::NixArchive,
+        nix::HashAlgorithm::SHA256,
+        nix::StorePathSet { },
+        source_filter);
 
     const std::string source_store_path = store->printStorePath(stored);
 
@@ -426,16 +448,9 @@ Result<void> topo_process(
     return { };
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        std::cerr << "Usage: nixja <target>\n";
-        return 1;
-    }
-
-    std::string target = argv[1];
-
+Result<std::string> nixja_gen(const std::string& target) {
     // Load Ninja build graph.
-    fs::path ninja_file = fs::current_path() / "build.ninja";
+    const fs::path ninja_file = fs::current_path() / "build.ninja";
 
     State state;
     RealDiskInterface disk;
@@ -444,8 +459,7 @@ int main(int argc, char* argv[]) {
     std::string error;
 
     if (!parser.Load(ninja_file.string(), &error)) {
-        std::cerr << "Parse error: " << error << '\n';
-        return 1;
+        return Err(error);
     }
 
     nix::experimentalFeatureSettings.experimentalFeatures.set(
@@ -454,14 +468,14 @@ int main(int argc, char* argv[]) {
     const nix::ref<nix::Store> store = nix::openStore();
 
     std::vector<Derivation> edge_map(state.edges_.size());
-    MAIN_TRY(topo_process(state, store, edge_map));
+    TRY(topo_process(state, store, edge_map));
 
     const Node* node = state.LookupNode(target);
 
     if (node == nullptr) {
         // No such target in the loaded build graph.
         // TODO: error
-        return 1;
+        return Err("");
     }
 
     const Edge* target_edge = node->in_edge();
@@ -469,10 +483,39 @@ int main(int argc, char* argv[]) {
     if (target_edge == nullptr) {
         // The target is a source file or has no producing build edge.
         // TODO: Error
-        return 1;
+        return Err("");
     }
 
-    std::cout << edge_map[target_edge->id_].derivation_store_path << '\n';
+    const Derivation& target_derivation = edge_map[target_edge->id_];
+    if (!target_derivation.generates_drv)
+        return target_derivation.derivation_store_path;
 
-    return 0;
+    const auto generated_drv = nix::DownstreamPlaceholder::unknownCaOutput(
+        store->parseStorePath(target_derivation.derivation_store_path), "out");
+    const auto generated_output = nix::DownstreamPlaceholder::unknownDerivation(
+        generated_drv, "out");
+
+    const json finalInputDrvs = {
+        { target_derivation.derivation_path, {
+                                                 { "dynamicOutputs", {
+                                                                         { "out", {
+                                                                                      { "dynamicOutputs", json::object() },
+                                                                                      { "outputs", json::array({ "out" }) },
+                                                                                  } },
+                                                                     } },
+                                                 { "outputs", json::array({ "out" }) },
+                                             } },
+    };
+
+    const auto final_drv = TRY(writeDerivation(store, {
+                                                          .name = target,
+                                                          .system = "x86_64-linux",
+                                                          .linkPhase = "",
+                                                          .buildPhase = "",
+                                                          .installPhase = fmt::format("cp -r \"{}\" \"$out\"", generated_output.render()),
+                                                          .outputMethod = "nar",
+                                                          .inputSrcs = json::array(),
+                                                          .inputDrvs = finalInputDrvs,
+                                                      }));
+    return store->printStorePath(final_drv);
 }
