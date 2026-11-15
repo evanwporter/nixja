@@ -248,23 +248,23 @@ int main(int argc, char* argv[]) {
 
     const json inputDrvs = json::object();
 
-    const auto derivation = emitDerivation(store, {
-                                                      .name = name,
-                                                      .storeNamePrefix = "nixja-scan-deps",
-                                                      .linkPhase = linkPhase,
-                                                      .buildPhase = command,
-                                                      .installPhase = installPhase,
-                                                      .outputMethod = "nar",
-                                                      .inputSrcs = inputSrcs,
-                                                      .inputDrvs = inputDrvs,
-                                                  });
+    const auto path = writeDerivation(store, {
+                                                 .name = name,
+                                                 .storeNamePrefix = "nixja-scan-deps",
+                                                 .linkPhase = linkPhase,
+                                                 .buildPhase = command,
+                                                 .installPhase = installPhase,
+                                                 .outputMethod = "nar",
+                                                 .inputSrcs = inputSrcs,
+                                                 .inputDrvs = inputDrvs,
+                                             });
 
-    if (!derivation.has_value()) {
-        std::cerr << derivation.error() << std::endl;
+    if (!path.has_value()) {
+        std::cerr << path.error() << std::endl;
         return 1;
     }
 
-    std::cout << derivation.value();
+    std::cout << store->printStorePath(path.value()) << '\n';
 
     return 0;
 }

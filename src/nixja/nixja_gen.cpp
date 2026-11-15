@@ -345,8 +345,9 @@ Result<void> process_dep_edge(
         outputs_str += output->path();
 
     const std::string buildPhase = fmt::format(
-        "{} -C '{}' "
-        "-i TODO -o {} -- {} > \"$out\"",
+        "NIXJA_SCAN_DEPS=$({} -C '{}' "
+        "-i TODO -o {} -- {}); "
+        "cp \"$NIXJA_SCAN_DEPS\" \"$out\"",
         NIXJA_SCAN_DEPS_PATH,
         build_relative.generic_string(),
         outputs_str,

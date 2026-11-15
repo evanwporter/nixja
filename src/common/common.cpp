@@ -95,14 +95,6 @@ Result<nix::StorePath> writeDerivation(
     return store->writeDerivation(derivation);
 }
 
-Result<std::string> emitDerivation(
-    const nix::ref<nix::Store>& store,
-    const DerivationSpec& spec) {
-
-    const auto derivation = TRY(buildDerivation(store, spec));
-    return derivation.unparse(*store, false);
-}
-
 std::string exec(const char* cmd) {
     std::array<char, 128> buffer;
     std::string result;

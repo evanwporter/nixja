@@ -113,18 +113,9 @@ struct DerivationSpec {
     json extraEnv;
 };
 
-/// Build up a nix derivation.
-Result<nix::Derivation> buildDerivation(
-    const nix::ref<nix::Store>& store,
-    const DerivationSpec& spec);
-
 /// Build a derivation and write it to the nix store. The return is the path in the store.
+/// TODO: fold this into buildDerivation
 Result<nix::StorePath> writeDerivation(
-    const nix::ref<nix::Store>& store,
-    const DerivationSpec& spec);
-
-/// Build a derivation and emit it as a string.
-Result<std::string> emitDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec);
 
