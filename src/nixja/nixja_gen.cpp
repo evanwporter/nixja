@@ -240,8 +240,6 @@ Result<void> create_derivation(
     }
 
     auto completeSpec = spec;
-    /// TODO: other symstems
-    completeSpec.system = "x86_64-linux";
     completeSpec.path = (findutils_path / "bin").string();
     completeSpec.linkPhase = linkPhase;
     completeSpec.inputSrcs = inputSrcs;
@@ -540,7 +538,6 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
     /// The final derivation (*.drv)
     const auto final_drv = TRY(writeDerivation(store, {
                                                           .name = target,
-                                                          .system = "x86_64-linux",
                                                           .linkPhase = "",
                                                           .buildPhase = "",
                                                           .installPhase = fmt::format("cp -r \"{}\" \"$out\"", generated_output.render()),

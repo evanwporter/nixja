@@ -62,7 +62,8 @@ Result<nix::Derivation> buildDerivation(
 
     const json drv = {
         { "name", derivation_name },
-        { "system", spec.system },
+        /// TODO: other symstems
+        { "system", "x86_64-linux" },
         { "builder", (bash / "bin" / "bash").string() },
         { "version", 4u },
         {

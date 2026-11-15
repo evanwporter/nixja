@@ -93,7 +93,6 @@ struct DerivationSpec {
     std::string name;
     /// Namespace for store objects created by the executable producing this derivation.
     std::string storeNamePrefix = "nixja";
-    std::string system;
 
     /// Additional PATH entries, appended after the core packages.
     std::string path;

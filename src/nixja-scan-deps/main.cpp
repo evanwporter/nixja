@@ -251,7 +251,6 @@ int main(int argc, char* argv[]) {
     const auto derivation = emitDerivation(store, {
                                                       .name = name,
                                                       .storeNamePrefix = "nixja-scan-deps",
-                                                      .system = "x86_64-linux",
                                                       .linkPhase = linkPhase,
                                                       .buildPhase = command,
                                                       .installPhase = installPhase,
