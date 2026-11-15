@@ -61,7 +61,7 @@ The major downside, and why its not good for local builds is that every run we n
 
 23. Integrate this into `meson` & `cmake`
 
-24. Add `-C` flag
+24. ~~Add `-C` flag~~
 
 25. Make `nixja-tree.py` script only link folders and drv files (also drv files should be pprinted json)
 

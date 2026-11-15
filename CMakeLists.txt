@@ -46,6 +46,12 @@ add_custom_target(refresh-example-binaries ALL
     COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-scan-deps"
     COMMAND ${CMAKE_COMMAND} -E create_hardlink
         "$<TARGET_FILE:nixja-scan-deps>" "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-scan-deps"
+    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/example/nixja"
+    COMMAND ${CMAKE_COMMAND} -E create_hardlink
+        "$<TARGET_FILE:nixja>" "${CMAKE_SOURCE_DIR}/tests/example/nixja"
+    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/example/nixja-scan-deps"
+    COMMAND ${CMAKE_COMMAND} -E create_hardlink
+        "$<TARGET_FILE:nixja-scan-deps>" "${CMAKE_SOURCE_DIR}/tests/example/nixja-scan-deps"
     DEPENDS nixja nixja-scan-deps
     VERBATIM
 )

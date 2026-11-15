@@ -145,6 +145,12 @@ int main(int argc, char* argv[]) {
 
     std::vector<std::string>* current_list = nullptr;
 
+    /// nixja-scan-deps starts in the reconstructed project source tree.
+    const fs::path project_root = fs::current_path();
+
+    /// The Ninja working directory relative to project_root.
+    fs::path build_relative = ".";
+
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 
@@ -154,9 +160,14 @@ int main(int argc, char* argv[]) {
             current_list = &inputs;
         } else if (arg == "-o") {
             current_list = &outputs;
-        }
-        /// TODO: Use .startWith when I upgrade my C++ version
-        else if (!arg.empty() && arg[0] == '-') {
+        } else if (arg == "-C") {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value for -C\n";
+                return 1;
+            }
+
+            build_relative = argv[++i];
+        } else if (!arg.empty() && arg[0] == '-') {
             std::cerr << "Unknown flag: " << arg << '\n';
             return 1;
         } else if (current_list) {
@@ -166,7 +177,12 @@ int main(int argc, char* argv[]) {
             return 1;
         }
     }
+
     const std::string command = arguments_after_separator(argc, argv);
+
+    // The compiler command, and clang-scan-deps, use Ninja's working
+    // directory just as a normal `ninja -C` invocation would.
+    fs::current_path(project_root / build_relative);
 
     const auto dependencies = scan_dependencies(command);
 
@@ -179,16 +195,22 @@ int main(int argc, char* argv[]) {
     std::replace(name.begin(), name.end(), '/', '_');
     std::replace(name.begin(), name.end(), '.', '_');
 
-    const fs::path project_root = fs::current_path();
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
 
     nix::initLibStore(true);
     const nix::ref<nix::Store> store = nix::openStore();
+
     std::unordered_map<std::string, std::string> store_paths;
 
     for (const auto& dependency : dependencies) {
-        const fs::path file = fs::weakly_canonical(dependency);
+        const fs::path absolute = fs::absolute(dependency).lexically_normal();
+        const fs::path relative = absolute.lexically_relative(project_root);
+        const bool is_project_file = !relative.empty()
+            && !relative.is_absolute()
+            && relative.begin() != relative.end()
+            && *relative.begin() != "..";
+        const fs::path file = fs::weakly_canonical(absolute);
 
         const auto stored = store->addToStore(
             nixja_store_name(file.filename().string(), "nixja-scan-deps"),
@@ -196,7 +218,7 @@ int main(int argc, char* argv[]) {
             nix::ContentAddressMethod::Raw::Flat);
 
         store_paths.emplace(
-            dependency,
+            is_project_file ? relative.generic_string() : dependency,
             store->printStorePath(stored));
     }
 
@@ -207,7 +229,11 @@ int main(int argc, char* argv[]) {
             linkPhase += fmt::format(
                 "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
         linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
-    };
+    }
+    linkPhase += fmt::format(
+        "mkdir -p \"$NIX_BUILD_TOP/{0}\"; "
+        "cd \"$NIX_BUILD_TOP/{0}\"; ",
+        build_relative.generic_string());
 
     std::string installPhase = "mkdir -p $out; ";
     for (const auto output : outputs) {

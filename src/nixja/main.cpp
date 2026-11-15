@@ -51,6 +51,7 @@ void run_command(const std::vector<std::string>& args) {
 // TODO: Test if I can run this in a standard nix derivation as if it was ninja or something
 // TODO: Add the -C arg like ninja -C build
 int main(int argc, char* argv[]) {
+    // TODO: To replicate NINJA we should copy the cmd line format from libninja
     argparse::ArgumentParser program("nixja", NIXJA_VERSION);
     program.add_description(
         "A Ninja compatible build system for Nix.");
@@ -61,6 +62,10 @@ int main(int argc, char* argv[]) {
         .help("Nix store path")
         .default_value("")
         .metavar("PATH");
+    program.add_argument("-C")
+        .help("Change to directory before doing anything else")
+        .default_value("./.")
+        .metavar("DIR");
 
     try {
         program.parse_args(argc, argv); // Example: ./main --input_files config.yml System.xml
@@ -70,8 +75,24 @@ int main(int argc, char* argv[]) {
         std::exit(1);
     }
 
+    /// The directory where nixja is called from, and the directory that we
+    /// add to the store as `source`
+    const fs::path source_root = fs::current_path();
+
+    /// The directory that becomes we run ninja commands from and is the absolute path of the build graph
+    const fs::path build_dir = fs::canonical(source_root / program.get<std::string>("-C"));
+
+    // Require the build directory to be inside the source root.
+    const fs::path build_relative = build_dir.lexically_relative(source_root);
+
+    // Make sure that passed build_dir is inside the source_root
+    if (build_relative.empty() || build_relative.is_absolute() || (*build_relative.begin() == "..")) {
+        std::cerr << "Build directory must be inside the source root\n";
+        return 1;
+    }
+
     const auto target = program.get<std::string>("target");
-    const auto drv_result = nixja_gen(target);
+    const auto drv_result = nixja_gen(target, source_root, build_dir);
     MAIN_TRY(drv_result);
     const auto drv_path = std::move(drv_result.value());
 

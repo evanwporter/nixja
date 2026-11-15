@@ -169,16 +169,32 @@ Result<void> create_derivation(
     const DerivationSpec& spec,
     const bool generates_drv,
     const std::string& source_store_path,
+    const fs::path& build_relative,
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
     // processing a edge means creating a drv file for it
 
-    /// TODO: `cp -rs` symlinks every file. We only want to symlink top level files and folders
-    const std::string linkPhase = fmt::format(
-        "mkdir -p \"$NIX_BUILD_TOP\"; cp -rs {}/. \"$NIX_BUILD_TOP\"; ",
+    std::string linkPhase = fmt::format(
+        "mkdir -p \"$NIX_BUILD_TOP\"; "
+        "(cd {0}; "
+        /// Visit every directory and creates the same directory tree
+        /// under $NIX_BUILD_TOP.Those directories are real and writable.
+        "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
+        /// Visits every non directory—regular files and symlinks and creates
+        /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
+        /// to the immutable source-store file.
+        "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
         source_store_path);
 
+    // This means that we are not calling `nixja-scan-deps`. Rather we are performing the
+    // operation ourself so we cd into build directory
+    if (!generates_drv)
+        linkPhase += fmt::format(
+            "cd \"$NIX_BUILD_TOP/{}\"; ",
+            build_relative.generic_string());
+
     const fs::path nixja_scan_deps_path = NIXJA_SCAN_DEPS_PATH;
+    const fs::path findutils_path = TRY(parse_which("find", store));
 
     // Collect source inputs.
     std::vector<std::string> inputSrcs;
@@ -188,6 +204,7 @@ Result<void> create_derivation(
 
     if (nixja_scan_deps_path.is_absolute())
         inputSrcs.push_back(nixja_scan_deps_path.parent_path().parent_path().filename().string());
+    inputSrcs.push_back(findutils_path.filename().string());
     inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
@@ -223,7 +240,9 @@ Result<void> create_derivation(
     }
 
     auto completeSpec = spec;
+    /// TODO: other symstems
     completeSpec.system = "x86_64-linux";
+    completeSpec.path = (findutils_path / "bin").string();
     completeSpec.linkPhase = linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
@@ -259,6 +278,7 @@ Result<void> create_derivation(
 Result<void> process_standard_edge(
     const Edge* edge,
     const std::string& source_store_path,
+    const fs::path& build_relative,
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
     // processing a edge means creating a drv file for it
@@ -296,7 +316,7 @@ Result<void> process_standard_edge(
         .outputMethod = "nar",
     };
 
-    TRY(create_derivation(edge, spec, false, source_store_path, store, edge_map));
+    TRY(create_derivation(edge, spec, false, source_store_path, build_relative, store, edge_map));
 
     return { };
 }
@@ -304,6 +324,7 @@ Result<void> process_standard_edge(
 Result<void> process_dep_edge(
     const Edge* edge,
     const std::string& source_store_path,
+    const fs::path& build_relative,
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
 
@@ -325,9 +346,11 @@ Result<void> process_dep_edge(
     for (const auto& output : edge->outputs_)
         outputs_str += output->path();
 
-    const std::string buildPhase = std::format(
-        "{} -i TODO -o {} -- {} > \"$out\"",
+    const std::string buildPhase = fmt::format(
+        "{} -C '{}' "
+        "-i TODO -o {} -- {} > \"$out\"",
         NIXJA_SCAN_DEPS_PATH,
+        build_relative.generic_string(),
         outputs_str,
         command);
 
@@ -340,7 +363,7 @@ Result<void> process_dep_edge(
         .outputMethod = "text",
     };
 
-    TRY(create_derivation(edge, spec, true, source_store_path, store, edge_map));
+    TRY(create_derivation(edge, spec, true, source_store_path, build_relative, store, edge_map));
 
     return { };
 }
@@ -351,7 +374,9 @@ Result<void> process_dep_edge(
 Result<void> topo_process(
     const State& state,
     const nix::ref<nix::Store> store,
-    std::vector<Derivation>& edge_map) {
+    std::vector<Derivation>& edge_map,
+    const fs::path& source_root,
+    const fs::path& build_relative) {
     /// The number of unprocessed dependencies for a give edge
     std::vector<size_t> indegree(state.edges_.size());
 
@@ -395,11 +420,9 @@ Result<void> topo_process(
 
     /// TODO: Move this out of this function
 
-    const fs::path source_dir = fs::canonical(fs::current_path());
-
     // Source-accessor filter paths are rooted at `/`, relative to source_dir.
     nix::PathFilter source_filter = [&](const std::string& path) {
-        const fs::path local_path = source_dir / fs::path(path).relative_path();
+        const fs::path local_path = source_root / fs::path(path).relative_path();
         std::error_code ec;
 
         if (!fs::is_symlink(fs::symlink_status(local_path, ec)))
@@ -417,8 +440,8 @@ Result<void> topo_process(
     };
 
     const auto stored = store->addToStore(
-        nixja_store_name(source_dir.filename().string(), "nixja-gen"),
-        nix::makeFSSourceAccessor(source_dir),
+        nixja_store_name(source_root.filename().string(), "nixja-gen"),
+        nix::makeFSSourceAccessor(source_root),
         nix::ContentAddressMethod::Raw::NixArchive,
         nix::HashAlgorithm::SHA256,
         nix::StorePathSet { },
@@ -431,9 +454,9 @@ Result<void> topo_process(
         queue.pop();
 
         if (has_depfile(edge->EvaluateCommand()))
-            TRY(process_dep_edge(edge, source_store_path, store, edge_map));
+            TRY(process_dep_edge(edge, source_store_path, build_relative, store, edge_map));
         else
-            TRY(process_standard_edge(edge, source_store_path, store, edge_map));
+            TRY(process_standard_edge(edge, source_store_path, build_relative, store, edge_map));
 
         parseCommand(edge->EvaluateCommand());
 
@@ -448,9 +471,9 @@ Result<void> topo_process(
     return { };
 }
 
-Result<std::string> nixja_gen(const std::string& target) {
+Result<std::string> nixja_gen(const std::string& target, const fs::path& source_root, const fs::path& build_dir) {
     // Load Ninja build graph.
-    const fs::path ninja_file = fs::current_path() / "build.ninja";
+    const fs::path ninja_file = build_dir / "build.ninja";
 
     State state;
     RealDiskInterface disk;
@@ -467,7 +490,7 @@ Result<std::string> nixja_gen(const std::string& target) {
     const nix::ref<nix::Store> store = nix::openStore();
 
     std::vector<Derivation> edge_map(state.edges_.size());
-    TRY(topo_process(state, store, edge_map));
+    TRY(topo_process(state, store, edge_map, source_root, build_dir.lexically_relative(source_root)));
 
     const Node* node = state.LookupNode(target);
 
