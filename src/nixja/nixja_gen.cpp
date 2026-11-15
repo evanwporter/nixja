@@ -458,9 +458,8 @@ Result<std::string> nixja_gen(const std::string& target) {
 
     std::string error;
 
-    if (!parser.Load(ninja_file.string(), &error)) {
+    if (!parser.Load(ninja_file.string(), &error))
         return Err(error);
-    }
 
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
@@ -487,6 +486,9 @@ Result<std::string> nixja_gen(const std::string& target) {
     }
 
     const Derivation& target_derivation = edge_map[target_edge->id_];
+
+    /// If we aren't building something that requires a dynamic derivation (and returns a drv)
+    /// then we can return early. The only commands that do this are ones that generate a depfile.
     if (!target_derivation.generates_drv)
         return target_derivation.derivation_store_path;
 
@@ -495,6 +497,11 @@ Result<std::string> nixja_gen(const std::string& target) {
     const auto generated_output = nix::DownstreamPlaceholder::unknownDerivation(
         generated_drv, "out");
 
+    // `target_derivation.derivation_store_path` is a *.drv.drv.
+    // We need to unwrap it to obtain the .drv which we then return
+    // and pass to nix-build to turn that .drv into a output
+
+    /// This derivation depends on a *.drv.drv file
     const json finalInputDrvs = {
         { target_derivation.derivation_path, {
                                                  { "dynamicOutputs", {
@@ -507,6 +514,7 @@ Result<std::string> nixja_gen(const std::string& target) {
                                              } },
     };
 
+    /// The final derivation (*.drv)
     const auto final_drv = TRY(writeDerivation(store, {
                                                           .name = target,
                                                           .system = "x86_64-linux",
