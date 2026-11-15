@@ -418,32 +418,11 @@ Result<void> topo_process(
 
     /// TODO: Move this out of this function
 
-    // Source-accessor filter paths are rooted at `/`, relative to source_dir.
-    nix::PathFilter source_filter = [&](const std::string& path) {
-        const fs::path local_path = source_root / fs::path(path).relative_path();
-        std::error_code ec;
-
-        if (!fs::is_symlink(fs::symlink_status(local_path, ec)))
-            return true;
-
-        // Resolve symlinks (including relative links) without requiring the
-        // target to exist, so dangling links into /nix/store are excluded too.
-        const fs::path target = fs::weakly_canonical(local_path, ec);
-        if (ec)
-            return true;
-
-        const fs::path store_dir = "/nix/store";
-        auto relative = target.lexically_relative(store_dir);
-        return relative.empty() || (relative != "." && *relative.begin() == "..");
-    };
-
     const auto stored = store->addToStore(
         nixja_store_name(source_root.filename().string(), "nixja-gen"),
         nix::makeFSSourceAccessor(source_root),
         nix::ContentAddressMethod::Raw::NixArchive,
-        nix::HashAlgorithm::SHA256,
-        nix::StorePathSet { },
-        source_filter);
+        nix::HashAlgorithm::SHA256);
 
     const std::string source_store_path = store->printStorePath(stored);
 
