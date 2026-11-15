@@ -63,7 +63,7 @@ The major downside, and why its not good for local builds is that every run we n
 
 24. ~~Add `-C` flag~~
 
-25. Make `nixja-tree.py` script only link folders and drv files (also drv files should be pprinted json)
+25. ~~Make `nixja-tree.py` script only link folders and drv files (also drv files should be pprinted json)~~
 
 26. `nixja-tree.py` should have option to output graphviz like the ninja tool
 
@@ -71,7 +71,7 @@ The major downside, and why its not good for local builds is that every run we n
 
 28. `nixja-tree.py` should remove current symlinks
 
-29. Add clean option
+29. Add clean option / python script to clean up (related goal #5)
 
 30. Make sure we are only compiling stuff in the `target` closure
 
