@@ -73,6 +73,8 @@ The major downside, and why its not good for local builds is that every run we n
 
 29. Add clean option
 
+30. Make sure we are only compiling stuff in the `target` closure
+
 ## Rationale
 
 I've never used nix-ninja, but I assume its excellent. I did use the design docs from nix-ninja when designing this.

@@ -90,7 +90,11 @@ def is_nixja_path(path: Path) -> bool:
 
     _, separator, name = path.name.partition("-")
 
-    return separator != "" and name.startswith("nixja-")
+    return (
+        separator != ""
+        and name.startswith("nixja-")
+        and (path.is_dir() or path.suffix == ".drv")
+    )
 
 
 def to_store_path(path: str) -> Path:
@@ -105,16 +109,16 @@ def to_store_path(path: str) -> Path:
 
 
 def symlink(path: Path, destination: Path) -> None:
-    """Symlink a Nixja-owned store object into the destination."""
+    """Symlink a Nixja-owned store object, preserving its full name."""
 
-    if not is_nixja_path(path) or path.suffix == ".h":
+    if not is_nixja_path(path):
         return
-
-    link = destination / path.name
 
     if not path.exists():
         print(f"Warning: Missing store path: {path}", file=sys.stderr)
         return
+
+    link = destination / path.name
 
     if link.is_symlink():
         if link.resolve() == path.resolve():
@@ -127,7 +131,32 @@ def symlink(path: Path, destination: Path) -> None:
 
     link.symlink_to(path)
 
-    print(f"Linked: {path.name}")
+    print(f"Linked: {link.name} -> {path}")
+
+
+def write_drv_json(
+    drv_path: Path,
+    destination: Path,
+    data: DerivationFile,
+) -> None:
+    """Export a derivation as JSON, retaining its hash and .drv extension."""
+
+    output = destination / f"{drv_path.name}.json"
+
+    content = json.dumps(data, indent=2) + "\n"
+
+    if output.is_symlink():
+        raise FileExistsError(f"Destination is a symlink: {output}")
+
+    if output.exists():
+        if output.read_text() == content:
+            return
+
+        raise FileExistsError(f"Conflicting JSON file: {output}")
+
+    output.write_text(content)
+
+    print(f"Exported: {output.name}")
 
 
 def traverse_store_object(
@@ -185,13 +214,15 @@ def traverse_derivation(
 
     visited.add(drv_path)
 
-    symlink(drv_path, destination)
-
     if not drv_path.exists():
         print(f"Warning: Missing derivation: {drv_path}", file=sys.stderr)
         return
 
     print(f"Inspecting derivation: {drv_path.name}")
+
+    # Export the derivation as JSON instead of symlinking it.
+    data = drv_to_json(drv_path)
+    write_drv_json(drv_path, destination, data)
 
     # Follow the derivation that produced this derivation.
     parent_drv = get_derivation(drv_path)
@@ -200,6 +231,7 @@ def traverse_derivation(
         print(f"  No deriver: {drv_path.name}")
     else:
         print(f"  Deriver: {parent_drv.name}")
+
         if is_nixja_path(parent_drv):
             traverse_derivation(
                 parent_drv,
@@ -207,7 +239,6 @@ def traverse_derivation(
                 visited,
             )
 
-    data = drv_to_json(drv_path)
     drv = get_drv_record(data, drv_path)
     inputs = drv.get("inputs", {})
 
@@ -252,7 +283,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=Path("nixja-store"),
-        help="Destination directory for symlinks.",
+        help="Destination directory for symlinks and JSON files.",
     )
 
     args = parser.parse_args()
