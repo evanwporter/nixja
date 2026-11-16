@@ -71,15 +71,19 @@ parse_makefile(std::string makefile_content) {
 
 struct Dependencies {
     /// A list of source and header files located under the `project_root`
+    /// These paths need to be added to the store
     std::unordered_set<std::string> local;
 
-    /// A list of paths with the nix store
+    /// A list of paths inside the nix store. These paths are already in
+    /// in the store
     std::unordered_set<std::string> store;
 };
 
 /// Filter out dependencies outside the source root
-Dependencies local_dependencies(const std::unordered_set<std::string>& dependencies, const nix::ref<nix::Store> store) {
-    const fs::path source_root = fs::current_path();
+Dependencies local_dependencies(
+    const std::unordered_set<std::string>& dependencies,
+    const nix::ref<nix::Store> store,
+    const fs::path& project_root) {
 
     Dependencies result;
 
@@ -95,9 +99,10 @@ Dependencies local_dependencies(const std::unordered_set<std::string>& dependenc
             continue;
         }
 
-        const fs::path relative = path.is_absolute()
-            ? path.lexically_relative(source_root)
-            : path.lexically_normal();
+        // Scanner paths are relative to the Ninja build directory, but
+        // containment must be checked against the original project root.
+        const fs::path absolute = fs::absolute(path).lexically_normal();
+        const fs::path relative = absolute.lexically_relative(project_root);
 
         // Check if the path is absolute
         if (relative.empty() || relative.is_absolute())
@@ -107,7 +112,7 @@ Dependencies local_dependencies(const std::unordered_set<std::string>& dependenc
         if (relative.begin() != relative.end() && *relative.begin() == "..")
             continue;
 
-        result.local.insert(relative.generic_string());
+        result.local.insert(absolute.generic_string());
     }
 
     return result;
@@ -201,7 +206,7 @@ int main(int argc, char* argv[]) {
     nix::initLibStore(true);
     const nix::ref<nix::Store> store = nix::openStore();
 
-    const auto dependencies = local_dependencies(scan_dependencies(command), store);
+    const auto dependencies = local_dependencies(scan_dependencies(command), store, project_root);
 
     /// TODO: Maybe give a error or something here?
     if (outputs.empty())
