@@ -69,36 +69,53 @@ parse_makefile(std::string makefile_content) {
     return dependency_graph;
 }
 
+struct Dependencies {
+    /// A list of source and header files located under the `project_root`
+    std::unordered_set<std::string> local;
+
+    /// A list of paths with the nix store
+    std::unordered_set<std::string> store;
+};
+
 /// Filter out dependencies outside the source root
-std::unordered_set<std::string>
-local_dependencies(
-    const std::unordered_set<std::string>& dependencies) {
+Dependencies local_dependencies(const std::unordered_set<std::string>& dependencies, const nix::ref<nix::Store> store) {
     const fs::path source_root = fs::current_path();
 
-    std::unordered_set<std::string> local;
+    Dependencies result;
 
     for (const auto& dependency : dependencies) {
         const fs::path path(dependency);
+
+        // Check if path is in the nix store
+        // TODO: Allow alternative locations other than /nix/store
+        if (dependency.starts_with("/nix/store/")) {
+            // TODO: I can do this by just slicing everything after the first level of the nix store path
+            const auto [store_path, sub_path] = store->toStorePath(dependency);
+            result.store.insert(store->printStorePath(store_path));
+            continue;
+        }
+
         const fs::path relative = path.is_absolute()
             ? path.lexically_relative(source_root)
             : path.lexically_normal();
 
+        // Check if the path is absolute
         if (relative.empty() || relative.is_absolute())
             continue;
 
+        // Check if its outside the project_root (where nixja-scan-deps is called from)
         if (relative.begin() != relative.end() && *relative.begin() == "..")
             continue;
 
-        local.insert(relative.generic_string());
+        result.local.insert(relative.generic_string());
     }
 
-    return local;
+    return result;
 }
 
 /// Scan compiler dependencies for a single edge
 /// TODO: This needs to be done in the derivation on a per EDGE basis
-std::unordered_set<std::string>
-scan_dependencies(const std::string command) {
+std::unordered_set<std::string> scan_dependencies(const std::string command) {
     // Run clang-scan-deps.
     const std::string scan_command = "clang-scan-deps -- " + command;
 
@@ -113,9 +130,6 @@ scan_dependencies(const std::string command) {
     for (auto& [target, dependencies] : dependency_map) {
         all_dependencies.insert(dependencies.begin(), dependencies.end());
     }
-
-    // Remove all dependencies that point outside of the root path
-    // all_dependencies = local_dependencies(all_dependencies);
 
     return all_dependencies;
 }
@@ -184,7 +198,10 @@ int main(int argc, char* argv[]) {
     // directory just as a normal `ninja -C` invocation would.
     fs::current_path(project_root / build_relative);
 
-    const auto dependencies = scan_dependencies(command);
+    nix::initLibStore(true);
+    const nix::ref<nix::Store> store = nix::openStore();
+
+    const auto dependencies = local_dependencies(scan_dependencies(command), store);
 
     /// TODO: Maybe give a error or something here?
     if (outputs.empty())
@@ -198,12 +215,10 @@ int main(int argc, char* argv[]) {
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
 
-    nix::initLibStore(true);
-    const nix::ref<nix::Store> store = nix::openStore();
-
+    // TODO: We could use a vector of pairs here instead
     std::unordered_map<std::string, std::string> store_paths;
 
-    for (const auto& dependency : dependencies) {
+    for (const auto& dependency : dependencies.local) {
         const fs::path absolute = fs::absolute(dependency).lexically_normal();
         const fs::path relative = absolute.lexically_relative(project_root);
         const bool is_project_file = !relative.empty()
@@ -244,6 +259,9 @@ int main(int argc, char* argv[]) {
     std::vector<std::string> inputSrcs;
     inputSrcs.reserve(store_paths.size());
     for (const auto& [dependency, storePath] : store_paths)
+        inputSrcs.push_back(fs::path(storePath).filename().string());
+
+    for (const auto& storePath : dependencies.store)
         inputSrcs.push_back(fs::path(storePath).filename().string());
 
     const json inputDrvs = json::object();
