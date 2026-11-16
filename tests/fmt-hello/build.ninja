@@ -1,8 +1,9 @@
 cxx = c++
-fmt = /nix/store/d0bpdc960m11k61jkl5h2wmxz69kc2q7-fmt-12.2.0
+fmt_include = /nix/store/76x6mpz3gdzgg5sl8i4yirgnsawsi455-fmt-12.2.0-dev/include
+fmt_lib = /nix/store/q7d5mip18lxgbbmm2aa2kyhzng4vbnjn-fmt-12.2.0/lib
 
 rule cxx
-  command = $cxx -std=c++23 -I$fmt/include $in -o $out -L$fmt/lib -lfmt
+  command = $cxx -std=c++23 -I$fmt_include $in -o $out -L$fmt_lib -lfmt
   description = CXX $out
 
 build hello: cxx main.cpp
