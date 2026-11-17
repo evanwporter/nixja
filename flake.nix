@@ -71,15 +71,15 @@
 					];
 
 					installPhase = ''
-						runHook preInstall
-						install -Dm755 src/nixja-scan-deps/nixja-scan-deps "$out/bin/nixja-scan-deps"
-						runHook postInstall
-					'';
+            						runHook preInstall
+            						install -Dm755 src/nixja-scan-deps/nixja-scan-deps "$out/bin/nixja-scan-deps"
+            						runHook postInstall
+          '';
 
 					postFixup = ''
-						wrapProgram $out/bin/nixja-scan-deps \
-							--prefix PATH : ${final.corePath}
-					'';
+            						wrapProgram $out/bin/nixja-scan-deps \
+            							--prefix PATH : ${final.corePath}
+          '';
 				};
 
 			# C++ generator
@@ -119,17 +119,17 @@
 					];
 
 					installPhase = ''
-						runHook preInstall
-						install -Dm755 src/nixja-gen/nixja-gen "$out/bin/nixja-gen"
-						runHook postInstall
-					'';
+            						runHook preInstall
+            						install -Dm755 src/nixja-gen/nixja-gen "$out/bin/nixja-gen"
+            						runHook postInstall
+          '';
 
 					postFixup = ''
-						wrapProgram $out/bin/nixja-gen \
-							--prefix PATH : ${final.lib.makeBinPath [
+            						wrapProgram $out/bin/nixja-gen \
+            							--prefix PATH : ${final.lib.makeBinPath [
 								final.nixja-scan-deps
 							]}:${final.corePath}
-					'';
+          '';
 				};
 
 			# C++ driver
@@ -169,18 +169,18 @@
 					];
 
 					installPhase = ''
-						runHook preInstall
-						install -Dm755 src/nixja/nixja "$out/bin/nixja"
-						runHook postInstall
-					'';
+            						runHook preInstall
+            						install -Dm755 src/nixja/nixja "$out/bin/nixja"
+            						runHook postInstall
+          '';
 
 					postFixup = ''
-						wrapProgram $out/bin/nixja \
-							--prefix PATH : ${final.lib.makeBinPath [
+            						wrapProgram $out/bin/nixja \
+            							--prefix PATH : ${final.lib.makeBinPath [
 								final.nix
 								final.nixja-gen
 							]}:${final.corePath}
-					'';
+          '';
 				};
 		};
 
@@ -238,6 +238,7 @@
 											fmt
 											ccache
 											argparse
+											spdlog
 
 											# Nix
 											nix
@@ -259,10 +260,10 @@
 											]));
 
 							shellHook = ''
-								export Clang_DIR="${llvmPkgs.clang-unwrapped.dev}/lib/cmake/clang"
-								export UV_PYTHON_DOWNLOADS=never
-								export UV_PYTHON="${pkgs.python313}/bin/python3"
-							'';
+                								export Clang_DIR="${llvmPkgs.clang-unwrapped.dev}/lib/cmake/clang"
+                								export UV_PYTHON_DOWNLOADS=never
+                								export UV_PYTHON="${pkgs.python313}/bin/python3"
+              '';
 						};
 				});
 	};
