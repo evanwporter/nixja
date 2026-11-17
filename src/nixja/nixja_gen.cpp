@@ -197,6 +197,7 @@ Result<void> create_derivation(
     inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
 
     const auto searchPaths = parseCommand(edge->EvaluateCommand());
 
@@ -318,11 +319,14 @@ Result<void> process_standard_edge(
     const std::string buildPhase = fmt::format("{0}; echo {0};", command);
 
     // Construct install phase.
-    std::string installPhase = "mkdir -p $out;";
+    std::string installPhase = "mkdir -p \"$out\"; ";
 
     for (const auto& output : edge->outputs_) {
+        const fs::path parent = fs::path(output->path()).parent_path();
+        if (!parent.empty())
+            installPhase += fmt::format("mkdir -p \"$out/{0}\"; ", parent.generic_string());
         installPhase += fmt::format(
-            "cp {0} $out/{0}; ",
+            "cp '{0}' \"$out/{0}\"; ",
             output->path());
     }
 

@@ -8,6 +8,7 @@ target_compile_options(nixja PRIVATE -Uunix)
 target_link_libraries(nixja PUBLIC
     nixja-common
     fmt::fmt
+    spdlog::spdlog
     PkgConfig::NIX_STORE
     nlohmann_json::nlohmann_json
     argparse::argparse
@@ -35,6 +36,7 @@ target_compile_definitions(nixja PRIVATE
     NIX_STORE_PACKAGE_PATH="${NIX_STORE_PACKAGE_PATH}"
     NIX_UTIL_PACKAGE_PATH="${NIX_UTIL_PACKAGE_PATH}"
     FMT_PACKAGE_PATH="${FMT_PACKAGE_PATH}"
+    SPDLOG_PACKAGE_PATH="${SPDLOG_PACKAGE_PATH}"
     CC_PACKAGE_PATH="${CC_PACKAGE_PATH}"
     CLANG_PACKAGE_PATH="${CLANG_PACKAGE_PATH}"
     LLVM_PACKAGE_PATH="${LLVM_PACKAGE_PATH}"

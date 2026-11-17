@@ -5,6 +5,7 @@ target_link_libraries(nixja-scan-deps PRIVATE
     nlohmann_json::nlohmann_json
     PkgConfig::NIX_STORE
     fmt::fmt
+    spdlog::spdlog
 )
 
 target_precompile_headers(nixja-scan-deps PRIVATE

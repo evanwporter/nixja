@@ -255,10 +255,25 @@ int main(int argc, char* argv[]) {
         "cd \"$NIX_BUILD_TOP/{0}\"; ",
         build_relative.generic_string());
 
-    std::string installPhase = "mkdir -p $out; ";
-    for (const auto output : outputs) {
+    std::string buildPhase;
+    for (const auto& output : outputs) {
+        const fs::path parent = fs::path(output).parent_path();
+        if (parent.empty())
+            continue;
+        buildPhase += fmt::format(
+            "mkdir -p '{0}'; ",
+            parent.generic_string());
+    }
+    buildPhase += command;
+
+    std::string installPhase = "mkdir -p \"$out\"; ";
+    for (const auto& output : outputs) {
+        const fs::path parent = fs::path(output).parent_path();
+        if (!parent.empty())
+            installPhase += fmt::format("mkdir -p \"$out/{0}\"; ", parent.generic_string());
         installPhase += fmt::format(
-            "cp {} $out/{}; ", output, fs::path(output).filename().string());
+            "cp '{0}' \"$out/{0}\"; ",
+            output);
     }
 
     std::vector<std::string> inputSrcs;
@@ -275,7 +290,7 @@ int main(int argc, char* argv[]) {
                                                  .name = name,
                                                  .storeNamePrefix = "nixja-scan-deps",
                                                  .linkPhase = linkPhase,
-                                                 .buildPhase = command,
+                                                 .buildPhase = buildPhase,
                                                  .installPhase = installPhase,
                                                  .outputMethod = "nar",
                                                  .inputSrcs = inputSrcs,

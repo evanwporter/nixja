@@ -56,6 +56,7 @@
 					buildInputs = [
 						final.argparse
 						final.fmt
+						final.spdlog
 						final.libblake3
 						final.nlohmann_json
 						final.nix
@@ -100,6 +101,7 @@
 					buildInputs = [
 						final.argparse
 						final.fmt
+						final.spdlog
 						final.libblake3
 						final.nlohmann_json
 						final.nix
@@ -150,6 +152,7 @@
 					buildInputs = [
 						final.argparse
 						final.fmt
+						final.spdlog
 						final.libblake3
 						final.nlohmann_json
 						final.nix

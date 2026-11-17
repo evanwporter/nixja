@@ -6,6 +6,7 @@
 
 #include <argparse/argparse.hpp>
 #include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <nix/store/store-api.hh>
 #include <nix/util/source-accessor.hh>
 #include <nlohmann/json.hpp>
@@ -98,7 +99,7 @@ int main(int argc, char* argv[]) {
 
     // Building this one derivation causes Nix to resolve the generator's
     // dynamic output and build the derivation it emits.
-    run_command({ "nix", "build", "--quiet", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", drv_path + "^out" });
+    run_command({ "nix", "build", "--print-build-logs", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", drv_path + "^out" });
 
     return 0;
 }

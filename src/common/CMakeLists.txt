@@ -4,6 +4,7 @@ target_link_libraries(nixja-common PUBLIC
     PkgConfig::NIX_STORE
     nlohmann_json::nlohmann_json
     fmt::fmt
+    spdlog::spdlog
 )
 
 target_include_directories(nixja-common PUBLIC

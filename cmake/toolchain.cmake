@@ -49,6 +49,7 @@ get_filename_component(NIX_UTIL_SHARED_LIBRARY_REALPATH
 
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 get_target_property(FMT_SHARED_LIBRARY fmt::fmt IMPORTED_LOCATION_RELEASE)
 if(NOT FMT_SHARED_LIBRARY)
@@ -59,6 +60,16 @@ if(NOT FMT_SHARED_LIBRARY)
 endif()
 get_filename_component(FMT_SHARED_LIBRARY_REALPATH
     "${FMT_SHARED_LIBRARY}" REALPATH)
+
+get_target_property(SPDLOG_SHARED_LIBRARY spdlog::spdlog IMPORTED_LOCATION_RELEASE)
+if(NOT SPDLOG_SHARED_LIBRARY)
+    get_target_property(SPDLOG_SHARED_LIBRARY spdlog::spdlog IMPORTED_LOCATION)
+endif()
+if(NOT SPDLOG_SHARED_LIBRARY)
+    message(FATAL_ERROR "Could not determine the shared library for spdlog::spdlog")
+endif()
+get_filename_component(SPDLOG_SHARED_LIBRARY_REALPATH
+    "${SPDLOG_SHARED_LIBRARY}" REALPATH)
 
 function(nixja_store_path_from_path path output_variable)
     string(REGEX MATCH "^/nix/store/[^/]+" store_path "${path}")
@@ -78,6 +89,7 @@ endforeach()
 nixja_store_path_from_path("${NIX_STORE_SHARED_LIBRARY_REALPATH}" NIX_STORE_PACKAGE_PATH)
 nixja_store_path_from_path("${NIX_UTIL_SHARED_LIBRARY_REALPATH}" NIX_UTIL_PACKAGE_PATH)
 nixja_store_path_from_path("${FMT_SHARED_LIBRARY_REALPATH}" FMT_PACKAGE_PATH)
+nixja_store_path_from_path("${SPDLOG_SHARED_LIBRARY_REALPATH}" SPDLOG_PACKAGE_PATH)
 nixja_store_path_from_path("${nlohmann_json_DIR}" NLOHMANN_JSON_PACKAGE_PATH)
 nixja_store_path_from_path("${CC_PROGRAM}" CC_PACKAGE_PATH)
 nixja_store_path_from_path("${CLANG_PROGRAM}" CLANG_PACKAGE_PATH)
