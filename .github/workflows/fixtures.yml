@@ -47,7 +47,7 @@ jobs:
       - name: Generate build.ninja
         env:
           FOLDER: ${{ matrix.folder }}
-        run: nix develop --command meson setup "tests/data/$FOLDER/build" "tests/data/$FOLDER"
+        run: nix develop --command env CC=cc CXX=c++ meson setup "tests/data/$FOLDER/build" "tests/data/$FOLDER"
 
       - name: Build and check output
         shell: bash
