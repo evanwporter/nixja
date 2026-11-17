@@ -94,11 +94,11 @@ std::unordered_set<std::string> parseCommand(const std::string& command) {
         if (arg == "-I" && i + 1 < args.size())
             paths.emplace(args[++i]);
 
-        // Handle -I<path>
+        // Handle `-I<path>`
         else if (arg.starts_with("-I") && arg.size() > 2)
             paths.emplace(arg.drop_front(2).str());
 
-        // Handle -L <path>
+        // Handle `-L <path>`
         else if (arg == "-L" && i + 1 < args.size())
             paths.emplace(args[++i]);
 
@@ -217,11 +217,17 @@ Result<void> create_derivation(
     //     std::cout << "  " << root << '\n';
     // }
 
-    // TODO: This is done twice; we should move this into parseCommand
     for (const auto& path : searchPaths) {
-        const auto [store_path, sub_path] = store->toStorePath(path);
-        const std::string root = store->printStorePath(store_path);
-        inputSrcs.push_back(fs::path(root).filename().string());
+        // Check if path is in the nix store
+        if (store->isInStore(path)) {
+
+            // If it is in the nix store then convert it to the store path.
+            // storePath: is the /nix/store/XXXXXX
+            // subPath: is the the /nix/store/XXXXX/YYYYYY
+            const auto [storePath, subPath] = store->toStorePath(path);
+            const std::string root = store->printStorePath(storePath);
+            inputSrcs.push_back(fs::path(root).filename().string());
+        }
     }
 
     // Collect input derivations.
