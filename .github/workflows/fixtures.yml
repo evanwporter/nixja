@@ -1,0 +1,60 @@
+name: Fixtures
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fixtures:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - folder: hello
+            target: hello
+            expected: Hello dynamic derivations!
+          - folder: header
+            target: hello
+            expected: Hello header example!
+          - folder: multi-source
+            target: main
+            expected: Hello multi-source example!
+          - folder: shared-lib
+            target: main
+            expected: Hello shared-lib example!
+          - folder: dynamic-deps
+            target: main
+            expected: Hello dynamic-deps example!
+          - folder: run-script
+            target: main
+            expected: Hello run-script example!
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: true
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            extra-experimental-features = ca-derivations dynamic-derivations recursive-nix
+
+      - name: Generate build.ninja
+        env:
+          FOLDER: ${{ matrix.folder }}
+        run: nix develop --command meson setup "tests/data/$FOLDER/build" "tests/data/$FOLDER"
+
+      - name: Build and check output
+        shell: bash
+        env:
+          FOLDER: ${{ matrix.folder }}
+          TARGET: ${{ matrix.target }}
+          EXPECTED: ${{ matrix.expected }}
+        run: |
+          nix run .#nixja -- -C "./tests/data/$FOLDER/build/" "$TARGET"
+          printf '%s\n' "$EXPECTED" | cmp - <("./result/$TARGET")

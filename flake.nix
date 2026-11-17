@@ -65,12 +65,6 @@
 						final.llvmPackages_22.clang-unwrapped
 					];
 
-					cmakeBuildType = "Release";
-					cmakeBuildFlags = [
-						"--target"
-						"nixja-scan-deps"
-					];
-
 					installPhase = ''
             						runHook preInstall
             						install -Dm755 src/nixja-scan-deps/nixja-scan-deps "$out/bin/nixja-scan-deps"
@@ -80,57 +74,6 @@
 					postFixup = ''
             						wrapProgram $out/bin/nixja-scan-deps \
             							--prefix PATH : ${final.corePath}
-          '';
-				};
-
-			# C++ generator
-			nixja-gen =
-				final.stdenv.mkDerivation {
-					name = "nixja-gen";
-
-					src = self;
-
-					nativeBuildInputs =
-						final.corePackages
-						++ [
-							final.cmake
-							final.makeWrapper
-							final.pkg-config
-						];
-
-					buildInputs = [
-						final.argparse
-						final.fmt
-						final.spdlog
-						final.libblake3
-						final.nlohmann_json
-						final.nix
-						final.llvmPackages_22.llvm
-						final.llvmPackages_22.clang
-						final.llvmPackages_22.clang-unwrapped
-					];
-
-					cmakeBuildType = "Release";
-					cmakeBuildFlags = [
-						"--target"
-						"nixja-gen"
-					];
-
-					cmakeFlags = [
-						"-DnixjaScanDeps=${final.nixja-scan-deps}/bin/nixja-scan-deps"
-					];
-
-					installPhase = ''
-            						runHook preInstall
-            						install -Dm755 src/nixja-gen/nixja-gen "$out/bin/nixja-gen"
-            						runHook postInstall
-          '';
-
-					postFixup = ''
-            						wrapProgram $out/bin/nixja-gen \
-            							--prefix PATH : ${final.lib.makeBinPath [
-								final.nixja-scan-deps
-							]}:${final.corePath}
           '';
 				};
 
@@ -161,14 +104,13 @@
 						final.llvmPackages_22.clang-unwrapped
 					];
 
-					cmakeBuildType = "Release";
 					cmakeBuildFlags = [
 						"--target"
 						"nixja"
 					];
 
 					cmakeFlags = [
-						"-DnixjaGen=${final.nixja-gen}/bin/nixja-gen"
+						"-DnixjaScanDeps=${final.nixja-scan-deps}/bin/nixja-scan-deps"
 					];
 
 					installPhase = ''
@@ -178,10 +120,10 @@
           '';
 
 					postFixup = ''
-            						wrapProgram $out/bin/nixja \
-            							--prefix PATH : ${final.lib.makeBinPath [
+            wrapProgram $out/bin/nixja \
+                --prefix PATH : ${final.lib.makeBinPath [
 								final.nix
-								final.nixja-gen
+								final.nixja-scan-deps
 							]}:${final.corePath}
           '';
 				};
@@ -193,7 +135,6 @@
 			forAllSystems (pkgs: {
 					default = pkgs.nixja;
 					nixja = pkgs.nixja;
-					nixja-gen = pkgs.nixja-gen;
 					nixja-scan-deps = pkgs.nixja-scan-deps;
 				});
 
@@ -207,11 +148,6 @@
 					nixja = {
 						type = "app";
 						program = "${pkgs.nixja}/bin/nixja";
-					};
-
-					nixja-gen = {
-						type = "app";
-						program = "${pkgs.nixja-gen}/bin/nixja-gen";
 					};
 
 					nixja-scan-deps = {

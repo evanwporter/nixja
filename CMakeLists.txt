@@ -45,10 +45,7 @@ endfunction()
 
 set(HARDLINK_COMMANDS)
 
-add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/example")
-add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/fmt-hello")
-add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/example")
-add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/meson")
+add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/data")
 
 add_custom_target(refresh-example-binaries ALL
     ${HARDLINK_COMMANDS}
