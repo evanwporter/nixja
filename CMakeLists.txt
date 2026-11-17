@@ -31,27 +31,27 @@ add_subdirectory(src/common)
 add_subdirectory(src/nixja)
 add_subdirectory(src/nixja-scan-deps)
 
-# Keep the executables beside the example and direct Ninja test inputs. Their
-# Nix store RUNPATH resolves shared libraries without a copied runtime closure.
+function(add_nixja_hardlinks dir)
+    foreach(target IN ITEMS nixja nixja-scan-deps)
+        list(APPEND HARDLINK_COMMANDS
+            COMMAND ${CMAKE_COMMAND} -E rm -f "${dir}/${target}"
+            COMMAND ${CMAKE_COMMAND} -E create_hardlink
+                "$<TARGET_FILE:${target}>" "${dir}/${target}"
+        )
+    endforeach()
+
+    set(HARDLINK_COMMANDS "${HARDLINK_COMMANDS}" PARENT_SCOPE)
+endfunction()
+
+set(HARDLINK_COMMANDS)
+
+add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/example")
+add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/fmt-hello")
+add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/example")
+add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/meson")
+
 add_custom_target(refresh-example-binaries ALL
- COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/example/nixja"
- COMMAND ${CMAKE_COMMAND} -E create_hardlink
-  "$<TARGET_FILE:nixja>" "${CMAKE_SOURCE_DIR}/example/nixja"
- COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/example/nixja-scan-deps"
- COMMAND ${CMAKE_COMMAND} -E create_hardlink
-  "$<TARGET_FILE:nixja-scan-deps>" "${CMAKE_SOURCE_DIR}/example/nixja-scan-deps"
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja"
-    COMMAND ${CMAKE_COMMAND} -E create_hardlink
-        "$<TARGET_FILE:nixja>" "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja"
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-scan-deps"
-    COMMAND ${CMAKE_COMMAND} -E create_hardlink
-        "$<TARGET_FILE:nixja-scan-deps>" "${CMAKE_SOURCE_DIR}/tests/fmt-hello/nixja-scan-deps"
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/example/nixja"
-    COMMAND ${CMAKE_COMMAND} -E create_hardlink
-        "$<TARGET_FILE:nixja>" "${CMAKE_SOURCE_DIR}/tests/example/nixja"
-    COMMAND ${CMAKE_COMMAND} -E rm -f "${CMAKE_SOURCE_DIR}/tests/example/nixja-scan-deps"
-    COMMAND ${CMAKE_COMMAND} -E create_hardlink
-        "$<TARGET_FILE:nixja-scan-deps>" "${CMAKE_SOURCE_DIR}/tests/example/nixja-scan-deps"
+    ${HARDLINK_COMMANDS}
     DEPENDS nixja nixja-scan-deps
     VERBATIM
 )
