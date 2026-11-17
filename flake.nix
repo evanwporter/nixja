@@ -31,6 +31,7 @@
 			corePackages = with final; [
 				bash
 				coreutils
+				findutils
 				which
 				stdenv.cc
 				clang-tools

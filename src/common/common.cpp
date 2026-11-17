@@ -126,7 +126,7 @@ Result<fs::path> parse_which(
         if (!store->isValidPath(store_path))
             return Err("The store path: '{}' does not lie in the Nix store.", store_path.to_string());
     } catch (const std::exception& error) {
-        return Err("Could not parse '{}' as a store path: {}", path.string(), error.what());
+        return Err("Could not parse '{}' for '{}' as a store path: {}", path.string(), cmd, error.what());
     }
 
     return path;
