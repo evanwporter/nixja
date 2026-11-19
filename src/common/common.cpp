@@ -29,14 +29,16 @@ Result<nix::Derivation> buildDerivation(
     const auto coreutils = TRY(parse_which("cp", store));
     const auto which = TRY(parse_which("which", store));
     const auto cc = TRY(parse_which("cc", store));
+    const auto cxx = TRY(parse_which("c++", store));
     const auto clang_tools = TRY(parse_which("clang-scan-deps", store));
 
     const std::string core_path = fmt::format(
-        "{}/bin:{}/bin:{}/bin:{}/bin:{}/bin",
+        "{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin",
         bash.string(),
         coreutils.string(),
         which.string(),
         cc.string(),
+        cxx.string(),
         clang_tools.string());
 
     json env = spec.extraEnv;
