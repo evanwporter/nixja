@@ -110,32 +110,6 @@ std::unordered_set<std::string> parseCommand(const std::string& command) {
     return paths;
 }
 
-/// Returns the command with the inputs appropriately substituted
-/// TODO: This is a bad way of doing it I think. Better to hack onto EvaluateCommand somehow
-std::string command_for(
-    const Edge* edge,
-    const std::vector<Derivation>& edge_map) {
-    std::string command = edge->EvaluateCommand();
-
-    for (const Node* input : edge->inputs_) {
-        const std::string path = input->path();
-
-        const Edge* producer = input->in_edge();
-        if (producer == nullptr)
-            continue;
-
-        const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path;
-
-        size_t pos = 0;
-        while ((pos = command.find(path, pos)) != std::string::npos) {
-            command.replace(pos, path.size(), nix_reference);
-            pos += nix_reference.size();
-        }
-    }
-
-    return command;
-}
-
 /// Determine whether a command uses a depfile
 /// TODO: Use ninja internals to figure this out
 bool has_depfile(const std::string& command) {
@@ -174,6 +148,31 @@ Result<void> create_derivation(
         /// to the immutable source-store file.
         "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
         source_store_path);
+
+    for (const Node* input : edge->inputs_) {
+        const fs::path path = input->path();
+
+        /// Checking if the path is absolute filters out /nix/store paths
+        if (path.is_absolute())
+            continue;
+
+        const Edge* producer = input->in_edge();
+
+        // producer being null means this is a leaf node / source file
+        if (producer == nullptr)
+            continue;
+
+        const fs::path destination = (build_relative / path).lexically_normal();
+        const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
+        linkPhase += fmt::format(
+            // create all the directories up to destination path
+            "mkdir -p \"$NIX_BUILD_TOP/{}\"; "
+            // -sfn ensures that ln doesn't fail if the destination already exists
+            "ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
+            destination.parent_path().string(),
+            nix_reference,
+            destination.string());
+    }
 
     // This means that we are not calling `nixja-scan-deps`. Rather we are performing the
     // operation ourself so we cd into build directory
@@ -314,9 +313,7 @@ Result<void> process_standard_edge(
         '_');
 
     // Construct build phase.
-    const std::string command = command_for(edge, edge_map);
-
-    const std::string buildPhase = fmt::format("{0}; echo {0};", command);
+    const std::string buildPhase = edge->EvaluateCommand();
 
     // Construct install phase.
     std::string installPhase = "mkdir -p \"$out\"; ";
@@ -361,7 +358,7 @@ Result<void> process_dep_edge(
     derivationName += ".drv";
 
     // Construct command.
-    const std::string command = command_for(edge, edge_map);
+    const std::string command = edge->EvaluateCommand();
 
     // Construct scanner output arguments.
     std::string outputs_str;
