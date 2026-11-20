@@ -31,15 +31,20 @@ Result<nix::Derivation> buildDerivation(
     const auto cc = TRY(parse_which("cc", store));
     const auto cxx = TRY(parse_which("c++", store));
     const auto clang_tools = TRY(parse_which("clang-scan-deps", store));
+
+    // HACK: This should be combined with cc/cxx above or handled in parseCommand
+    const auto clang = TRY(parse_which("clang", store));
+
     const auto find = TRY(parse_which("find", store));
 
     const std::string core_path = fmt::format(
-        "{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin",
+        "{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin",
         bash.string(),
         coreutils.string(),
         which.string(),
         cc.string(),
         cxx.string(),
+        clang.string(),
         clang_tools.string(),
         find.string());
 
@@ -58,6 +63,8 @@ Result<nix::Derivation> buildDerivation(
         coreutils.filename().string(),
         which.filename().string(),
         cc.filename().string(),
+        cxx.filename().string(),
+        clang.filename().string(),
         clang_tools.filename().string(),
         find.filename().string(),
     });
