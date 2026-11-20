@@ -125,14 +125,17 @@ std::unordered_set<std::string> parseCompileCommand(const std::string& command) 
 Result<Command> parseCommand(
     const std::string& command,
     const fs::path& source_root,
+    const std::string& source_store_path,
     const nix::ref<nix::Store> store) {
 
     // Extract executable from command.
+    // TODO: This will break if the file path has spaces
     const auto end = command.find_first_of(" \t\n\r");
     const std::string program = command.substr(0, end);
 
+    // An empty program means its likely a PHONY command
     if (program.empty())
-        return Err("Empty command");
+        return Command { .command = command, .inputSrcs = { } };
 
     const fs::path programPath(program);
 
@@ -143,18 +146,38 @@ Result<Command> parseCommand(
 
     // Check whether an executable is inside the Nix store.
     auto addStoreInput = [&](const fs::path& path) -> Result<void> {
-        if (!store->isInStore(path.string()))
-            return Err(fmt::format("Executable is not in Nix store: {}", path.string()));
+        if (store->isInStore(path.string())) {
 
-        const auto [storePath, subPath] = store->toStorePath(path.string());
+            const auto [storePath, subPath] = store->toStorePath(path.string());
 
-        result.inputSrcs.insert(store->printStorePath(storePath));
+            result.inputSrcs.insert(store->printStorePath(storePath));
 
+        } else {
+        }
         return { };
     };
 
     if (programPath.is_absolute()) {
-        // Absolute executable, e.g. /nix/store/.../bin/clang++
+
+        // Absolute executable in the nix store, e.g. /nix/store/.../bin/clang++
+        if (store->isInStore(programPath.string())) {
+            const auto [storePath, subPath] = store->toStorePath(programPath.string());
+            result.inputSrcs.insert(store->printStorePath(storePath));
+        }
+
+        else {
+            const fs::path path_relative = programPath.lexically_relative(source_root);
+
+            if (path_relative.empty() || path_relative.is_absolute() || *path_relative.begin() == "..")
+                return Err(
+                    "The program ({}) must be either in the nix store or a part of the source directory.",
+                    /// TODO: Investigate whether I can get a string_view instead
+                    programPath.string());
+
+            // Convert the absolute path to a relative one
+            // NOTE: Would it be better too provide a path in the nix store?
+            result.command.replace(0, program.size(), (fs::path(source_store_path) / path_relative).string());
+        }
         TRY(addStoreInput(programPath));
 
     } else if (programPath.has_parent_path()) {
@@ -218,8 +241,10 @@ Result<void> create_derivation(
     const fs::path& build_relative,
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
+
     // processing a edge means creating a drv file for it
 
+    // TODO: Consider replacing find with its absolute path?
     std::string linkPhase = fmt::format(
         "mkdir -p \"$NIX_BUILD_TOP\"; "
         "(cd {0}; "
@@ -265,7 +290,6 @@ Result<void> create_derivation(
             build_relative.generic_string());
 
     const fs::path nixja_scan_deps_path = NIXJA_SCAN_DEPS_PATH;
-    const fs::path findutils_path = TRY(parse_which("find", store));
 
     // Collect source inputs.
     std::vector<std::string> inputSrcs;
@@ -275,13 +299,12 @@ Result<void> create_derivation(
 
     if (nixja_scan_deps_path.is_absolute())
         inputSrcs.push_back(nixja_scan_deps_path.parent_path().parent_path().filename().string());
-    inputSrcs.push_back(findutils_path.filename().string());
     inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
 
-    const auto command = TRY(parseCommand(edge->EvaluateCommand(), source_root, store));
+    const auto command = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
 
     // TODO: Turn this into actual logging
     //
@@ -344,7 +367,8 @@ Result<void> create_derivation(
     }
 
     auto completeSpec = spec;
-    completeSpec.buildPhase = command.command;
+    if (!generates_drv)
+        completeSpec.buildPhase = command.command;
     completeSpec.linkPhase = linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
