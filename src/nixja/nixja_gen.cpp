@@ -255,7 +255,11 @@ Result<void> create_derivation(
         "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
         source_store_path);
 
-    for (const Node* input : edge->inputs_) {
+    /// `collector` obtains the entire closure of nodes
+    InputsCollector collector;
+    collector.VisitNode(edge->outputs_.front());
+
+    for (const Node* input : collector.inputs()) {
         const fs::path path = input->path();
 
         /// Checking if the path is absolute filters out /nix/store paths
@@ -337,7 +341,8 @@ Result<void> create_derivation(
     // Collect input derivations.
     json inputDrvs = json::object();
 
-    for (const auto node : edge->inputs_) {
+    /// TODO: Can we combine this loop with the one above
+    for (const auto node : collector.inputs()) {
         if (const Edge* producer = node->in_edge()) {
 
             const auto& derivation = edge_map[producer->id_];
