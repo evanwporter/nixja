@@ -37,7 +37,7 @@
 				clang-tools
 			];
 
-			corePath = final.lib.makeBinPath final.corePackages;
+			corePath = final.lib.makeBinPath (final.corePackages ++ [final.llvmPackages_22.clang]);
 
 			# C++ dependency scanner
 			nixja-scan-deps =
