@@ -232,6 +232,19 @@ bool has_depfile(const std::string& command) {
     return false;
 }
 
+/**
+ * @brief Creates a Nix derivation for a Ninja build edge.
+ *
+ * @param edge The Ninja build edge to process.
+ * @param spec The initial specification for the Nix derivation.
+ * @param generates_drv Whether the derivation generates another derivation.
+ * @param source_root The directory where `nixja` was invoked.
+ * @param source_store_path The source root's path in the Nix store.
+ * @param build_relative The build directory relative to the source root.
+ * @param store The Nix store used to create the derivation.
+ * @param[out] edge_map Maps Ninja edge IDs to their generated derivations.
+ * @return Success or an error if derivation creation fails.
+ */
 Result<void> create_derivation(
     const Edge* edge,
     const DerivationSpec& spec,
