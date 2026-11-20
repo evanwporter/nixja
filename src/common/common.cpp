@@ -31,15 +31,17 @@ Result<nix::Derivation> buildDerivation(
     const auto cc = TRY(parse_which("cc", store));
     const auto cxx = TRY(parse_which("c++", store));
     const auto clang_tools = TRY(parse_which("clang-scan-deps", store));
+    const auto find = TRY(parse_which("find", store));
 
     const std::string core_path = fmt::format(
-        "{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin",
+        "{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin:{}/bin",
         bash.string(),
         coreutils.string(),
         which.string(),
         cc.string(),
         cxx.string(),
-        clang_tools.string());
+        clang_tools.string(),
+        find.string());
 
     json env = spec.extraEnv;
     env["name"] = derivation_name;
@@ -57,6 +59,7 @@ Result<nix::Derivation> buildDerivation(
         which.filename().string(),
         cc.filename().string(),
         clang_tools.filename().string(),
+        find.filename().string(),
     });
 
     for (const auto& input : spec.inputSrcs)
