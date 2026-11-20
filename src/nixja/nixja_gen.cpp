@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -75,10 +76,18 @@ struct Derivation {
     std::string output_path;
 };
 
+struct Command {
+    /// The command to run
+    std::string command;
+
+    /// A set of every input src (into the nix store) that this command requires
+    std::unordered_set<std::string> inputSrcs;
+};
+
 /// This function parses a compilation command using the LLVM TOKENIZER.
 /// It returns a list of the include paths and the library paths.
 /// TODO: Check if paths exist
-std::unordered_set<std::string> parseCommand(const std::string& command) {
+std::unordered_set<std::string> parseCompileCommand(const std::string& command) {
 
     /// Parse the command into a vector of char*
     llvm::BumpPtrAllocator allocator;
@@ -88,6 +97,7 @@ std::unordered_set<std::string> parseCommand(const std::string& command) {
 
     std::unordered_set<std::string> paths;
 
+    // i=1 here to skip the first arg (the command)
     for (size_t i = 1; i < args.size(); ++i) {
         llvm::StringRef arg(args[i]);
         // Handle `-I <path>`
@@ -108,6 +118,78 @@ std::unordered_set<std::string> parseCommand(const std::string& command) {
     }
 
     return paths;
+}
+
+/// Given a generic NINJA command, we parse all the possible NIX STORE paths from it
+/// TODO: Parse the complex shell syntax like program1 && program2
+Result<Command> parseCommand(
+    const std::string& command,
+    const fs::path& source_root,
+    const nix::ref<nix::Store> store) {
+
+    // Extract executable from command.
+    const auto end = command.find_first_of(" \t\n\r");
+    const std::string program = command.substr(0, end);
+
+    if (program.empty())
+        return Err("Empty command");
+
+    const fs::path programPath(program);
+
+    Command result {
+        .command = command,
+        .inputSrcs = parseCompileCommand(command),
+    };
+
+    // Check whether an executable is inside the Nix store.
+    auto addStoreInput = [&](const fs::path& path) -> Result<void> {
+        if (!store->isInStore(path.string()))
+            return Err(fmt::format("Executable is not in Nix store: {}", path.string()));
+
+        const auto [storePath, subPath] = store->toStorePath(path.string());
+
+        result.inputSrcs.insert(store->printStorePath(storePath));
+
+        return { };
+    };
+
+    if (programPath.is_absolute()) {
+        // Absolute executable, e.g. /nix/store/.../bin/clang++
+        TRY(addStoreInput(programPath));
+
+    } else if (programPath.has_parent_path()) {
+        // Relative executable, e.g. ./scripts/generate or bin/tool
+
+        const fs::path root = fs::canonical(source_root);
+        const fs::path resolved = fs::weakly_canonical(root / programPath);
+
+        const fs::path relative = resolved.lexically_relative(root);
+
+        if (relative.empty() || relative.is_absolute())
+            return Err("Executable cannot be resolved inside source root");
+
+        // TODO: I think we only need to check the first component
+        // but verify this with lexically_relative
+        for (const auto& component : relative) {
+            if (component == "..")
+                return Err(fmt::format("Executable escapes source root: {}", program));
+        }
+
+        // Relative executable is already included in the source tree.
+        // No additional Nix store input is needed.
+
+    } else {
+        // Bare executable name, e.g. clang++, gcc, python3
+        // TODO: Eventually we'll need c
+
+        const fs::path resolved = TRY(parse_which(program, store));
+
+        // parse_which() returns the containing Nix store path
+        // in your existing implementation.
+        TRY(addStoreInput(resolved));
+    }
+
+    return result;
 }
 
 /// Determine whether a command uses a depfile
@@ -131,6 +213,7 @@ Result<void> create_derivation(
     const Edge* edge,
     const DerivationSpec& spec,
     const bool generates_drv,
+    const fs::path& source_root,
     const std::string& source_store_path,
     const fs::path& build_relative,
     const nix::ref<nix::Store> store,
@@ -198,7 +281,7 @@ Result<void> create_derivation(
     inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
 
-    const auto searchPaths = parseCommand(edge->EvaluateCommand());
+    const auto command = TRY(parseCommand(edge->EvaluateCommand(), source_root, store));
 
     // TODO: Turn this into actual logging
     //
@@ -217,7 +300,7 @@ Result<void> create_derivation(
     //     std::cout << "  " << root << '\n';
     // }
 
-    for (const auto& path : searchPaths) {
+    for (const auto& path : command.inputSrcs) {
         // Check if path is in the nix store
         if (store->isInStore(path)) {
 
@@ -261,7 +344,7 @@ Result<void> create_derivation(
     }
 
     auto completeSpec = spec;
-    completeSpec.path = (findutils_path / "bin").string();
+    completeSpec.buildPhase = command.command;
     completeSpec.linkPhase = linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
@@ -296,6 +379,7 @@ Result<void> create_derivation(
 
 Result<void> process_standard_edge(
     const Edge* edge,
+    const fs::path& source_root,
     const std::string& source_store_path,
     const fs::path& build_relative,
     const nix::ref<nix::Store> store,
@@ -336,13 +420,14 @@ Result<void> process_standard_edge(
         .outputMethod = "nar",
     };
 
-    TRY(create_derivation(edge, spec, false, source_store_path, build_relative, store, edge_map));
+    TRY(create_derivation(edge, spec, false, source_root, source_store_path, build_relative, store, edge_map));
 
     return { };
 }
 
 Result<void> process_dep_edge(
     const Edge* edge,
+    const fs::path& source_root,
     const std::string& source_store_path,
     const fs::path& build_relative,
     const nix::ref<nix::Store> store,
@@ -384,7 +469,7 @@ Result<void> process_dep_edge(
         .outputMethod = "text",
     };
 
-    TRY(create_derivation(edge, spec, true, source_store_path, build_relative, store, edge_map));
+    TRY(create_derivation(edge, spec, true, source_root, source_store_path, build_relative, store, edge_map));
 
     return { };
 }
@@ -454,9 +539,9 @@ Result<void> topo_process(
         queue.pop();
 
         if (has_depfile(edge->EvaluateCommand()))
-            TRY(process_dep_edge(edge, source_store_path, build_relative, store, edge_map));
+            TRY(process_dep_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
         else
-            TRY(process_standard_edge(edge, source_store_path, build_relative, store, edge_map));
+            TRY(process_standard_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
 
         for (const auto neighbor : consumers[edge->id_]) {
             indegree[neighbor->id_]--;
@@ -469,6 +554,14 @@ Result<void> topo_process(
     return { };
 }
 
+/**
+ * @brief Generates a Nix derivation for a target in a Ninja build graph.
+ *
+ * @param target The Ninja build target to generate a derivation for.
+ * @param source_root The directory where `nixja` is called from.
+ * @param build_dir The directory containing the build.ninja file.
+ * @return The Nix store path of the generated derivation
+ */
 Result<std::string> nixja_gen(const std::string& target, const fs::path& source_root, const fs::path& build_dir) {
     // Load Ninja build graph.
     const fs::path ninja_file = build_dir / "build.ninja";
