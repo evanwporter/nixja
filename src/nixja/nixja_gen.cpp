@@ -122,6 +122,7 @@ std::unordered_set<std::string> parseCompileCommand(const std::string& command) 
 
 /// Given a generic NINJA command, we parse all the possible NIX STORE paths from it
 /// TODO: Parse the complex shell syntax like program1 && program2
+/// TODO: Rework to flow better & DRY
 Result<Command> parseCommand(
     const std::string& command,
     const fs::path& source_root,
@@ -142,19 +143,6 @@ Result<Command> parseCommand(
     Command result {
         .command = command,
         .inputSrcs = parseCompileCommand(command),
-    };
-
-    // Check whether an executable is inside the Nix store.
-    auto addStoreInput = [&](const fs::path& path) -> Result<void> {
-        if (store->isInStore(path.string())) {
-
-            const auto [storePath, subPath] = store->toStorePath(path.string());
-
-            result.inputSrcs.insert(store->printStorePath(storePath));
-
-        } else {
-        }
-        return { };
     };
 
     if (programPath.is_absolute()) {
@@ -178,8 +166,6 @@ Result<Command> parseCommand(
             // NOTE: Would it be better too provide a path in the nix store?
             result.command.replace(0, program.size(), (fs::path(source_store_path) / path_relative).string());
         }
-        TRY(addStoreInput(programPath));
-
     } else if (programPath.has_parent_path()) {
         // Relative executable, e.g. ./scripts/generate or bin/tool
 
@@ -205,11 +191,10 @@ Result<Command> parseCommand(
         // Bare executable name, e.g. clang++, gcc, python3
         // TODO: Eventually we'll need c
 
-        const fs::path resolved = TRY(parse_which(program, store));
-
-        // parse_which() returns the containing Nix store path
-        // in your existing implementation.
-        TRY(addStoreInput(resolved));
+        // TODO: Perhaps rework parse_which to return a nix store path directly?
+        const fs::path path = TRY(parse_which(program, store));
+        const auto [storePath, subPath] = store->toStorePath(path.string());
+        result.inputSrcs.insert(store->printStorePath(storePath));
     }
 
     return result;
