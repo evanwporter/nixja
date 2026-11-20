@@ -1,8 +1,5 @@
 # TODO
 
-
-## Todo
-
 1. ~~Initial write in python using pyn~~
 
 2. ~~Rewrite in C++ using ninja~~
@@ -73,3 +70,17 @@
 33. Define a convention for how I define functions and var (ie: snake case or camel case)
 
 34. Look at whether I can use the [ninja test script](./external/ninja/misc/output_test.py) to test my own stuff in integration
+
+35. Think more seriously about how to handle the nuances of a shell command in NINJA
+    - `libdash`
+    - treesitter-bash
+
+36. Integrate [NIX #16851](https://github.com/NixOS/nix/issues/16851) into nixja (assuming this gets solved)
+
+37. Provide list of clear limitations for nixja (such as using clang-scan-deps which requires a clear build command)
+
+38. Look into how `bear` seperates the compile commands from all other commands.
+
+39. Patch ELF with `so` location in nix store
+
+40. Build files in a env with only the input objects (as opposed to the entire source root directory)
