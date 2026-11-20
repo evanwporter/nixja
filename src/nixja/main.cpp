@@ -80,7 +80,8 @@ int main(int argc, char* argv[]) {
     /// add to the store as `source`
     const fs::path source_root = fs::current_path();
 
-    /// The directory that becomes we run ninja commands from and is the absolute path of the build graph
+    /// The directory that becomes we run ninja commands from and is the absolute path of the build graph.
+    /// Also the directory where the `build.ninja` file is located.
     const fs::path build_dir = fs::canonical(source_root / program.get<std::string>("-C"));
 
     // Require the build directory to be inside the source root.
