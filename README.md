@@ -79,6 +79,8 @@ The major downside, and why its not good for local builds is that every run we n
 
 32. ~~Have nixja-scan-deps write directly to the store again and return the store path to the drv.~~
 
+33. Define a convention for how I define functions and var (ie: snake case or camel case)
+
 ## Rationale
 
 I've never used nix-ninja, but I assume its excellent. I did use the design docs from nix-ninja when designing this.
