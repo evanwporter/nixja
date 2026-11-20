@@ -59,10 +59,6 @@ int main(int argc, char* argv[]) {
     program.add_argument("target")
         .help("Build the specified target")
         .metavar("TARGET");
-    program.add_argument("--store")
-        .help("Nix store path")
-        .default_value("")
-        .metavar("PATH");
     program.add_argument("-C")
         .help("Change to directory before doing anything else")
         .default_value("./.")
@@ -80,11 +76,21 @@ int main(int argc, char* argv[]) {
     /// add to the store as `source`
     const fs::path source_root = fs::current_path();
 
+    const fs::path requested_dir = program.get<std::string>("-C");
+
+    std::error_code ec;
+
     /// The directory that becomes we run ninja commands from and is the absolute path of the build graph.
     /// Also the directory where the `build.ninja` file is located.
-    const fs::path build_dir = fs::canonical(source_root / program.get<std::string>("-C"));
+    const fs::path build_dir = fs::canonical(source_root / requested_dir, ec);
 
-    // Require the build directory to be inside the source root.
+    if (ec) {
+        std::cerr << "Invalid build directory specified with -C "
+                  << requested_dir << ": " << ec.message() << '\n';
+        return 1;
+    }
+
+    /// The build directory relative to the source_root
     const fs::path build_relative = build_dir.lexically_relative(source_root);
 
     // Make sure that passed build_dir is inside the source_root
@@ -95,7 +101,10 @@ int main(int argc, char* argv[]) {
 
     const auto target = program.get<std::string>("target");
     const auto drv_result = nixja_gen(target, source_root, build_dir);
+
+    /// TODO: Idk if I like this macro
     MAIN_TRY(drv_result);
+
     const auto drv_path = std::move(drv_result.value());
 
     // Building this one derivation causes Nix to resolve the generator's
