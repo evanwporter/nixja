@@ -72,6 +72,49 @@ struct Command {
     std::unordered_set<std::string> inputSrcs;
 };
 
+std::string shell_quote(const std::string& value) {
+    std::string quoted = "'";
+    for (const char character : value) {
+        if (character == '\'')
+            quoted += "'\\''";
+        else
+            quoted += character;
+    }
+    return quoted + "'";
+}
+
+// Run inside each generated derivation. The builder's source tree can be any
+// Ninja project, so this must not refer to a helper file in that tree.
+constexpr std::string_view fix_rpath_script = R"nixja(
+set -eu
+target=$1
+shift
+needed=$(patchelf --print-needed "$target" 2>/dev/null) || exit 0
+for name in $needed; do
+    case $name in
+        */*) continue ;;
+    esac
+    directory=
+    for candidate do
+        [ -f "$candidate" ] || continue
+        soname=$(patchelf --print-soname "$candidate" 2>/dev/null) || continue
+        if [ "$name" != "$soname" ] && [ "$name" != "${candidate##*/}" ]; then
+            continue
+        fi
+        resolved=$(readlink -f "$candidate")
+        candidate_directory=${resolved%/*}
+        if [ -n "$directory" ] && [ "$directory" != "$candidate_directory" ]; then
+            echo "Ambiguous library $name for $target" >&2
+            exit 1
+        fi
+        directory=$candidate_directory
+    done
+    if [ -n "$directory" ]; then
+        patchelf --add-rpath "$directory" "$target"
+    fi
+done
+)nixja";
+
 /// This function parses a compilation command using the LLVM TOKENIZER.
 /// It returns a list of the include paths and the library paths.
 /// TODO: Check if paths exist
@@ -365,6 +408,39 @@ Result<void> create_derivation(
     completeSpec.linkPhase = linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
+
+    if (!generates_drv) {
+        const auto patchelf = TRY(parse_which("patchelf", store));
+        completeSpec.path = (patchelf / "bin").string();
+        completeSpec.inputSrcs.push_back(patchelf.filename().string());
+
+        const std::string fixup = shell_quote(std::string(fix_rpath_script));
+        for (const auto& output : edge->outputs_) {
+            completeSpec.installPhase += fmt::format(
+                "sh -c {} nixja-fix-rpath \"$out\"/{}", fixup, shell_quote(output->path()));
+
+            for (const Node* input : collector.inputs()) {
+                const fs::path path = input->path();
+                if (path.is_absolute() || input->in_edge() == nullptr)
+                    continue;
+
+                // Ninja inputs also contain object files and symbol stamps.
+                // Only shared-library names are candidates for DT_NEEDED.
+                const std::string filename = path.filename().string();
+                const auto so = filename.find(".so");
+                if (so == std::string::npos ||
+                    (so + 3 != filename.size() && filename[so + 3] != '.'))
+                    continue;
+
+                const auto& producer = edge_map[input->in_edge()->id_];
+                if (producer.generates_drv)
+                    continue;
+
+                completeSpec.installPhase += " " + shell_quote(producer.output_path + "/" + path.generic_string());
+            }
+            completeSpec.installPhase += "; ";
+        }
+    }
     const auto drv_path = TRY(writeDerivation(store, completeSpec));
 
     // Resolve output paths.

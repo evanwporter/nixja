@@ -32,6 +32,7 @@
 				bash
 				coreutils
 				findutils
+				patchelf
 				which
 				stdenv.cc
 				clang-tools
