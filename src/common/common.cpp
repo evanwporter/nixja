@@ -1,11 +1,15 @@
 #include "common.hpp"
 
+#include <algorithm>
 #include <filesystem>
+#include <stdexcept>
 
 #include <fmt/format.h>
 #include <nix/store/derivations.hh>
 #include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
+#include <nix/util/source-accessor.hh>
+#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -142,4 +146,107 @@ Result<fs::path> parse_which(
     }
 
     return path;
+}
+
+std::string join_command_arguments(const std::vector<std::string>& arguments) {
+    std::ostringstream result;
+    for (const auto& argument : arguments) {
+        if (result.tellp() > 0)
+            result << ' ';
+        result << argument;
+    }
+
+    return result.str();
+}
+
+std::string add_file_to_store_with_parents(
+    const nix::ref<nix::Store>& store,
+    const fs::path& source_root,
+    const fs::path& file_relative,
+    std::string_view name_prefix) {
+
+    // The filter sees paths rooted at /, regardless of project_root's location.
+    const std::string wanted = (fs::path("/") / file_relative).generic_string();
+    nix::PathFilter filter = [wanted](const std::string& path) {
+        return path == wanted || (path.size() < wanted.size() && wanted.compare(0, path.size(), path) == 0 && (path == "/" || wanted[path.size()] == '/'));
+    };
+
+    const auto stored = store->addToStore(
+        nixja_store_name(file_relative.filename().string(), name_prefix),
+        nix::makeFSSourceAccessor(source_root),
+        nix::ContentAddressMethod::Raw::NixArchive,
+        nix::HashAlgorithm::SHA256,
+        nix::StorePathSet { },
+        filter);
+
+    return store->printStorePath(stored);
+}
+
+std::string generate_link_phase(
+    const std::string& input,
+    const std::vector<std::string>& outputs,
+    const std::string& source_store_path) {
+
+    // The input is a directory (presumably the `source_root`).
+
+    // TODO: Consider replacing find with its absolute path?
+    std::string linkPhase = fmt::format(
+        "mkdir -p \"$NIX_BUILD_TOP\"; "
+        /// TODO: What if the output file is already generated?
+        /// Like a .object file be written for a local build
+        "(cd {0}; "
+        /// Visit every directory and creates the same directory tree
+        /// under $NIX_BUILD_TOP.Those directories are real and writable.
+        "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
+        /// Visits every non directory—regular files and symlinks and creates
+        /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
+        /// to the immutable source-store file.
+        "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
+        source_store_path);
+    return "";
+}
+
+std::string generate_link_phase(
+    // paths relative to `source_root`
+    const std::vector<fs::path>& inputs,
+    const std::vector<fs::path>& outputs,
+
+    // source_root path in nix store
+    const fs::path& source_store_path) {
+
+    // path under source root : path under nix store
+
+    // the input is a list of files
+
+    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
+    for (const auto& input : inputs) {
+        linkPhase += fmt::format(
+            "mkdir -p -- \"$NIX_BUILD_TOP\"/{0}; "
+            "ln -s {1}/{2} $NIX_BUILD_TOP/{2}; ",
+            input.parent_path().native(),
+            source_store_path.native(),
+            input.native());
+    }
+
+    return "";
+}
+
+/// Outputs everything after the `--` in the command
+/// TODO: Combine more efficiently with other cmd line parsing
+std::string arguments_after_separator(int argc, char* argv[]) {
+    std::ostringstream result;
+    bool after_separator = false;
+
+    for (int i = 1; i < argc; ++i) {
+        if (!after_separator) {
+            after_separator = std::string_view(argv[i]) == "--";
+            continue;
+        }
+
+        if (result.tellp() > 0)
+            result << ' ';
+        result << argv[i];
+    }
+
+    return result.str();
 }

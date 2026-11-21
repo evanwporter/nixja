@@ -17,6 +17,8 @@
 #include "common.hpp"
 #include "nixja_gen.hpp"
 
+namespace fs = std::filesystem;
+
 using json = nlohmann::json;
 
 // TODO: This can be made simpler

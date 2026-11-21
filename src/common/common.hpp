@@ -7,13 +7,14 @@
 #include <string_view>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include <fmt/format.h>
 #include <nix/store/store-api.hh>
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
-namespace fs = std::filesystem;
+// namespace fs = std::filesystem;
 
 // Move this Rustify stuff into a seperate github project
 template <typename T, typename E = std::string>
@@ -79,6 +80,14 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
     unwrap_result(result);                                    \
 })
 
+// Propagate an expected_fs result into a Result with a string error.
+#define TRY_EC(expr) ({                       \
+    auto&& result = (expr);                   \
+    if (!result)                              \
+        return Err(result.error().message()); \
+    unwrap_result(result);                    \
+})
+
 /// Use only from an int-returning main function.
 #define MAIN_TRY(expr)                           \
     do {                                         \
@@ -127,6 +136,37 @@ std::string nixja_store_name(std::string_view name, std::string_view prefix);
 // Retrieved 2026-10-31, License - CC BY-SA 4.0
 std::string exec(const char* cmd);
 
-Result<fs::path> parse_which(
+Result<std::filesystem::path> parse_which(
     const std::string& cmd,
     const nix::ref<nix::Store>& store);
+
+/**
+ * @brief Add a file to the Nix store at its path relative to the source root.
+ *
+ * `<source_root>/nested/path/file.xxx` -> `/nix/store/XYZ-file/nested/path/file.xxx`
+ *
+ * @param store Nix store to add the file to.
+ * @param source_root Root directory containing the file.
+ * @param file_relative Path to the file relative to source_root. It must be located
+ *        under source_root
+ * @param name_prefix Prefix for the resulting store object's name.
+ * @return Path to the nix store file (ie: `/nix/store/XYZ-file`).
+ */
+std::string add_file_to_store_with_parents(
+    const nix::ref<nix::Store>& store,
+    const std::filesystem::path& source_root,
+    const std::filesystem::path& file_relative,
+    std::string_view name_prefix);
+
+/// Join command arguments using the spacing expected by the shell command.
+std::string join_command_arguments(const std::vector<std::string>& arguments);
+
+std::string arguments_after_separator(int argc, char* argv[]);
+
+struct StoreFile {
+    /// The path of the file in the nix store
+    std::filesystem::path source_store_path;
+
+    /// The path of the the file relative to the source root
+    std::filesystem::path file_relative;
+};

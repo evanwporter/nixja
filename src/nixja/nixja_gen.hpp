@@ -1,6 +1,9 @@
+#include <filesystem>
 #include <string>
 
 #include "common.hpp"
+
+namespace fs = std::filesystem;
 
 /// Create the buildable derivation for a Ninja target.  Depfile-producing
 /// targets are wrapped so Nix follows their dynamic output.
