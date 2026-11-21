@@ -263,6 +263,8 @@ Result<void> create_derivation(
             continue;
 
         const fs::path destination = (build_relative / path).lexically_normal();
+
+        /// The target of the symlink
         const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
         linkPhase += fmt::format(
             // create all the directories up to destination path
