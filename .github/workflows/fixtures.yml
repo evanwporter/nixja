@@ -27,9 +27,9 @@ jobs:
                     - folder: multi-source
                       target: main
                       expected: Hello multi-source example!
-                    # - folder: shared-lib
-                    #   target: main
-                    #   expected: Hello shared-lib example!
+                    - folder: shared-lib
+                      target: main
+                      expected: Hello shared-lib example!
                     - folder: dynamic-deps
                       target: main
                       expected: Hello dynamic-deps example!
