@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <filesystem>
@@ -12,6 +13,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <nix/store/content-address.hh>
 #include <nix/store/store-api.hh>
 #include <nix/util/source-accessor.hh>
 
@@ -80,6 +82,7 @@ struct Dependencies {
 };
 
 /// Filter out dependencies outside the source root
+/// TODO: Rename since we are no longer obtaining only local deps
 Dependencies local_dependencies(
     const std::unordered_set<std::string>& dependencies,
     const nix::ref<nix::Store> store,
@@ -166,7 +169,7 @@ int main(int argc, char* argv[]) {
     std::vector<std::string>* current_list = nullptr;
 
     /// nixja-scan-deps starts in the reconstructed project source tree.
-    const fs::path project_root = fs::current_path();
+    const fs::path source_root = fs::current_path();
 
     /// The Ninja working directory relative to project_root.
     fs::path build_relative = ".";
@@ -202,12 +205,12 @@ int main(int argc, char* argv[]) {
 
     // The compiler command, and clang-scan-deps, use Ninja's working
     // directory just as a normal `ninja -C` invocation would.
-    fs::current_path(project_root / build_relative);
+    fs::current_path(source_root / build_relative);
 
     nix::initLibStore(true);
     const nix::ref<nix::Store> store = nix::openStore();
 
-    const auto dependencies = local_dependencies(scan_dependencies(command), store, project_root);
+    const auto dependencies = local_dependencies(scan_dependencies(command), store, source_root);
 
     /// TODO: Maybe give a error or something here?
     if (outputs.empty())
@@ -221,40 +224,39 @@ int main(int argc, char* argv[]) {
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
 
-    // TODO: We could use a vector of pairs here instead
-    std::unordered_map<std::string, std::string> store_paths;
+    /// [Relative path under `source_root`, absolute /nix/store/XYZ-path-filename]
+    std::vector<std::pair<fs::path, std::string>> store_paths;
 
     for (const auto& dependency : dependencies.local) {
         const fs::path absolute = fs::absolute(dependency).lexically_normal();
-        const fs::path relative = absolute.lexically_relative(project_root);
-        const bool is_project_file = !relative.empty()
-            && !relative.is_absolute()
-            && relative.begin() != relative.end()
-            && *relative.begin() != "..";
-        const fs::path file = fs::weakly_canonical(absolute);
+        const fs::path file_relative = absolute.lexically_relative(source_root);
+
+        // Every dependency path must exist, because we aren't checking for errors here
+        const fs::path file = fs::canonical(absolute);
 
         const auto stored = store->addToStore(
             nixja_store_name(file.filename().string(), "nixja-scan-deps"),
             nix::makeFSSourceAccessor(file),
             nix::ContentAddressMethod::Raw::Flat);
 
-        store_paths.emplace(
-            is_project_file ? relative.generic_string() : dependency,
-            store->printStorePath(stored));
+        store_paths.emplace_back(file_relative, store->printStorePath(stored));
     }
 
     std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
-    for (const auto [dep, store_path] : store_paths) {
-        const fs::path parent = fs::path(dep).parent_path();
+    for (const auto [file_relative, store_path] : store_paths) {
+        const fs::path parent = file_relative.parent_path();
+        // TODO: Idk if we need to make this check
         if (!parent.empty())
             linkPhase += fmt::format(
-                "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.generic_string());
-        linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, dep);
+                "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.string());
+        linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, file_relative.string());
     }
+
+    /// Create the build directory and cd into it
     linkPhase += fmt::format(
         "mkdir -p \"$NIX_BUILD_TOP/{0}\"; "
         "cd \"$NIX_BUILD_TOP/{0}\"; ",
-        build_relative.generic_string());
+        build_relative.string());
 
     std::string buildPhase;
     for (const auto& output : outputs) {
@@ -277,9 +279,10 @@ int main(int argc, char* argv[]) {
             output);
     }
 
+    /// Add each storePath as a inputSrc
     std::vector<std::string> inputSrcs;
     inputSrcs.reserve(store_paths.size());
-    for (const auto& [dependency, storePath] : store_paths)
+    for (const auto& [file_relative, storePath] : store_paths)
         inputSrcs.push_back(fs::path(storePath).filename().string());
 
     for (const auto& storePath : dependencies.store)
