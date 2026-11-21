@@ -33,7 +33,7 @@ add_subdirectory(src/nixja-scan-deps)
 add_subdirectory(src/nixja-task)
 
 function(add_nixja_hardlinks dir)
-    foreach(target IN ITEMS nixja nixja-scan-deps)
+    foreach(target IN ITEMS nixja nixja-scan-deps nixja-task)
         list(APPEND HARDLINK_COMMANDS
             COMMAND ${CMAKE_COMMAND} -E rm -f "${dir}/${target}"
             COMMAND ${CMAKE_COMMAND} -E create_hardlink
@@ -50,6 +50,6 @@ add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/data")
 
 add_custom_target(refresh-example-binaries ALL
     ${HARDLINK_COMMANDS}
-    DEPENDS nixja nixja-scan-deps
+    DEPENDS nixja nixja-scan-deps nixja-task
     VERBATIM
 )

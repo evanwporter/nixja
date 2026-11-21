@@ -26,6 +26,14 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
+std::string shell_quote(const std::string& value) {
+    std::string quoted = "'";
+    for (const char ch : value)
+        quoted += ch == '\'' ? "'\\''" : std::string(1, ch);
+    quoted += '\'';
+    return quoted;
+}
+
 /// Parse Makefile dependency output from clang-scan-deps
 /// TODO: Use whatever ninja uses internally
 std::unordered_map<std::string, std::unordered_set<std::string>>
@@ -86,7 +94,8 @@ struct Dependencies {
 Dependencies local_dependencies(
     const std::unordered_set<std::string>& dependencies,
     const nix::ref<nix::Store> store,
-    const fs::path& project_root) {
+    const fs::path& project_root,
+    const fs::path& build_dir) {
 
     Dependencies result;
 
@@ -104,7 +113,7 @@ Dependencies local_dependencies(
 
         // Scanner paths are relative to the Ninja build directory, but
         // containment must be checked against the original project root.
-        const fs::path absolute = fs::absolute(path).lexically_normal();
+        const fs::path absolute = (path.is_absolute() ? path : build_dir / path).lexically_normal();
         const fs::path relative = absolute.lexically_relative(project_root);
 
         // Check if the path is absolute
@@ -123,11 +132,11 @@ Dependencies local_dependencies(
 
 /// Scan compiler dependencies for a single edge
 /// TODO: This needs to be done in the derivation on a per EDGE basis
-std::unordered_set<std::string> scan_dependencies(const std::string command) {
+std::unordered_set<std::string> scan_dependencies(const std::string command, const fs::path& build_dir) {
     // Run clang-scan-deps.
-    const std::string scan_command = "clang-scan-deps -- " + command;
+    const auto scan_command = "cd " + shell_quote(build_dir.string()) + " && clang-scan-deps -- " + command;
 
-    const std::string output = exec(scan_command.c_str());
+    const auto output = exec(scan_command.c_str());
 
     const auto dependency_map = parse_makefile(output);
 
@@ -183,14 +192,12 @@ int main(int argc, char* argv[]) {
 
     const std::string command = arguments_after_separator(argc, argv);
 
-    // The compiler command, and clang-scan-deps, use Ninja's working
-    // directory just as a normal `ninja -C` invocation would.
-    fs::current_path(source_root / build_relative);
+    const fs::path build_dir = (source_root / build_relative).lexically_normal();
 
     nix::initLibStore(true);
     const nix::ref<nix::Store> store = nix::openStore();
 
-    const auto dependencies = local_dependencies(scan_dependencies(command), store, source_root);
+    const auto dependencies = local_dependencies(scan_dependencies(command, build_dir), store, source_root, build_dir);
 
     /// TODO: Maybe give a error or something here?
     if (outputs.empty())
@@ -222,42 +229,41 @@ int main(int argc, char* argv[]) {
         store_paths.emplace_back(file_relative, store->printStorePath(stored));
     }
 
-    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
-    for (const auto [file_relative, store_path] : store_paths) {
-        const fs::path parent = file_relative.parent_path();
-        // TODO: Idk if we need to make this check
-        if (!parent.empty())
-            linkPhase += fmt::format(
-                "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.string());
-        linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, file_relative.string());
+    const fs::path configured_task_path = NIXJA_TASK_PATH;
+    fs::path task_path = configured_task_path;
+    std::string task_store_name;
+    const bool task_is_store_path = configured_task_path.is_absolute() && configured_task_path.string().starts_with("/nix/store/");
+
+    if (task_is_store_path) {
+        const auto [task_store_path, sub_path] = store->toStorePath(configured_task_path.string());
+        task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
+    } else {
+        const fs::path local_task = configured_task_path.is_absolute()
+            ? configured_task_path
+            : source_root / configured_task_path;
+        if (!fs::exists(local_task)) {
+            std::cerr << "nixja-task not found at " << local_task << '\n';
+            return 1;
+        }
+
+        const auto stored_task = store->addToStore(
+            nixja_store_name("nixja-task", "nixja-scan-deps"),
+            nix::makeFSSourceAccessor(fs::canonical(local_task)),
+            nix::ContentAddressMethod::Raw::NixArchive);
+        task_path = store->printStorePath(stored_task);
+        task_store_name = task_path.filename().string();
     }
 
-    /// Create the build directory and cd into it
-    linkPhase += fmt::format(
-        "mkdir -p \"$NIX_BUILD_TOP/{0}\"; "
-        "cd \"$NIX_BUILD_TOP/{0}\"; ",
-        build_relative.string());
-
-    std::string buildPhase;
-    for (const auto& output : outputs) {
-        const fs::path parent = fs::path(output).parent_path();
-        if (parent.empty())
-            continue;
-        buildPhase += fmt::format(
-            "mkdir -p '{0}'; ",
-            parent.generic_string());
-    }
-    buildPhase += command;
-
-    std::string installPhase = "mkdir -p \"$out\"; ";
-    for (const auto& output : outputs) {
-        const fs::path parent = fs::path(output).parent_path();
-        if (!parent.empty())
-            installPhase += fmt::format("mkdir -p \"$out/{0}\"; ", parent.generic_string());
-        installPhase += fmt::format(
-            "cp '{0}' \"$out/{0}\"; ",
-            output);
-    }
+    std::string buildPhase = fmt::format(
+        "{} -C {} -i",
+        shell_quote(task_path.string()),
+        shell_quote(build_relative.generic_string()));
+    for (const auto& [file_relative, store_path] : store_paths)
+        buildPhase += fmt::format(" {}", shell_quote(fmt::format("{}:{}", store_path, file_relative.generic_string())));
+    buildPhase += " -o";
+    for (const auto& output : outputs)
+        buildPhase += fmt::format(" {}", shell_quote(output));
+    buildPhase += fmt::format(" -- {}", shell_quote(command));
 
     /// Add each storePath as a inputSrc
     std::vector<std::string> inputSrcs;
@@ -268,14 +274,20 @@ int main(int argc, char* argv[]) {
     for (const auto& storePath : dependencies.store)
         inputSrcs.push_back(fs::path(storePath).filename().string());
 
+    inputSrcs.push_back(task_store_name);
+    if (!task_is_store_path) {
+        inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
+        inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
+        inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
+        inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
+    }
+
     const json inputDrvs = json::object();
 
     const auto path = writeDerivation(store, {
                                                  .name = name,
                                                  .storeNamePrefix = "nixja-scan-deps",
-                                                 .linkPhase = linkPhase,
                                                  .buildPhase = buildPhase,
-                                                 .installPhase = installPhase,
                                                  .outputMethod = "nar",
                                                  .inputSrcs = inputSrcs,
                                                  .inputDrvs = inputDrvs,

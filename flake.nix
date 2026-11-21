@@ -39,6 +39,31 @@
 
 			corePath = final.lib.makeBinPath (final.corePackages ++ [final.llvmPackages_22.clang]);
 
+			# Builder for dependency-scanned Ninja edges
+			nixja-task =
+				final.stdenv.mkDerivation {
+					name = "nixja-task";
+					src = self;
+					nativeBuildInputs = final.corePackages ++ [final.cmake final.pkg-config];
+					buildInputs = [
+						final.argparse
+						final.fmt
+						final.spdlog
+						final.libblake3
+						final.nlohmann_json
+						final.nix
+						final.llvmPackages_22.llvm
+						final.llvmPackages_22.clang
+						final.llvmPackages_22.clang-unwrapped
+					];
+					cmakeBuildFlags = ["--target" "nixja-task"];
+					installPhase = ''
+            						runHook preInstall
+            						install -Dm755 src/nixja-task/nixja-task "$out/bin/nixja-task"
+            						runHook postInstall
+          '';
+				};
+
 			# C++ dependency scanner
 			nixja-scan-deps =
 				final.stdenv.mkDerivation {
@@ -66,6 +91,10 @@
 						final.llvmPackages_22.clang-unwrapped
 					];
 
+					cmakeFlags = [
+						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
+					];
+
 					installPhase = ''
             						runHook preInstall
             						install -Dm755 src/nixja-scan-deps/nixja-scan-deps "$out/bin/nixja-scan-deps"
@@ -73,7 +102,7 @@
           '';
 
 					postFixup = ''
-            						wrapProgram $out/bin/nixja-scan-deps \
+                        						wrapProgram $out/bin/nixja-scan-deps \
             							--prefix PATH : ${final.corePath}
           '';
 				};
@@ -136,6 +165,7 @@
 			forAllSystems (pkgs: {
 					default = pkgs.nixja;
 					nixja = pkgs.nixja;
+					nixja-task = pkgs.nixja-task;
 					nixja-scan-deps = pkgs.nixja-scan-deps;
 				});
 
@@ -154,6 +184,11 @@
 					nixja-scan-deps = {
 						type = "app";
 						program = "${pkgs.nixja-scan-deps}/bin/nixja-scan-deps";
+					};
+
+					nixja-task = {
+						type = "app";
+						program = "${pkgs.nixja-task}/bin/nixja-task";
 					};
 				});
 

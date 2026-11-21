@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <sys/wait.h>
+#include <unistd.h>
 
 #include <argparse/argparse.hpp>
 #include <expected_fs/expected_fs.hpp>
@@ -39,13 +40,15 @@ Result<StoreFile> parseStoreFile(const std::string& input) {
  * @param nix_build_top Absolute path of $NIX_BUILD_TOP
  * @return Success or an error if derivation creation fails.
  */
-Result<void> linkPhase(const std::vector<StoreFile>& inputs, const std::vector<fs::path> outputs, const fs::path& nix_build_top) {
+Result<void> linkPhase(const std::vector<StoreFile>& inputs, const fs::path& nix_build_top, const fs::path& build_relative) {
     TRY_EC(fs::create_directories(nix_build_top));
     for (const auto& store_file : inputs) {
         const auto destination = nix_build_top / store_file.file_relative;
         TRY_EC(fs::create_directories(destination.parent_path()));
         TRY_EC(fs::create_symlink(store_file.source_store_path, destination));
     }
+
+    TRY_EC(fs::create_directories(nix_build_top / build_relative));
 
     return { };
 }
@@ -61,17 +64,26 @@ Result<void> buildPhase(const std::vector<StoreFile>& inputs, const std::vector<
             TRY_EC(fs::create_directories(parent));
     }
 
-    const int status = std::system(command.c_str());
-    if (status == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
-        // Command failed
-        return Err("[nixja-task] Command failed: {}", command);
+    const pid_t child = fork();
+    if (child == -1)
+        return Err("[nixja-task] Could not start command: {}", command);
+    if (child == 0) {
+        execlp("bash", "bash", "-e", "-c", command.c_str(), nullptr);
+        _exit(127);
     }
+
+    int status = 0;
+    if (waitpid(child, &status, 0) == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+        return Err("[nixja-task] Command failed: {}", command);
 
     return { };
 }
 
 Result<void> installPhase(const std::vector<StoreFile>& inputs, const std::vector<fs::path> outputs, const fs::path& nix_build_top, const fs::path& build_relative, const std::string& command) {
-    const fs::path out = std::getenv("out");
+    const char* out_env = std::getenv("out");
+    if (!out_env)
+        return Err("[nixja-task] out is not set");
+    const fs::path out = out_env;
 
     TRY_EC(fs::create_directories(out));
 
@@ -101,7 +113,7 @@ Result<void> nixja_task(
     for (const auto& input : inputs)
         store_files.push_back(TRY(parseStoreFile(input)));
 
-    TRY(linkPhase(store_files, outputs, nix_build_top));
+    TRY(linkPhase(store_files, nix_build_top, build_relative));
     TRY(buildPhase(store_files, outputs, nix_build_top, build_relative, command));
     TRY(installPhase(store_files, outputs, nix_build_top, build_relative, command));
 

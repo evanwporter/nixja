@@ -11,6 +11,7 @@ find_program(CLANG_SCAN_DEPS_PROGRAM clang-scan-deps REQUIRED)
 # builds supply absolute store paths for the tools used inside derivations.
 set(nixjaGen "./nixja-gen" CACHE STRING "Path to nixja-gen")
 set(nixjaScanDeps "./nixja-scan-deps" CACHE STRING "Path to nixja-scan-deps")
+set(nixjaTask "./nixja-task" CACHE STRING "Path to nixja-task")
 
 function(nixja_store_item_from_program program output_prefix)
     get_filename_component(${output_prefix}_BIN_DIR "${program}" DIRECTORY)
@@ -79,7 +80,7 @@ function(nixja_store_path_from_path path output_variable)
     set(${output_variable} "${store_path}" PARENT_SCOPE)
 endfunction()
 
-foreach(tool IN ITEMS nixjaGen nixjaScanDeps)
+foreach(tool IN ITEMS nixjaGen nixjaScanDeps nixjaTask)
     if(IS_ABSOLUTE "${${tool}}")
         nixja_store_path_from_path("${${tool}}" ${tool}_STORE_PATH)
         get_filename_component(${tool}_STORE_NAME "${${tool}_STORE_PATH}" NAME)
