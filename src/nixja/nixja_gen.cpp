@@ -16,20 +16,8 @@
 #include <nix/util/source-accessor.hh>
 #include <nlohmann/json.hpp>
 
-#include <clang/Basic/Diagnostic.h>
-#include <clang/Basic/DiagnosticOptions.h>
-#include <clang/Driver/Compilation.h>
-#include <clang/Driver/Driver.h>
-#include <clang/Driver/Job.h>
-#include <clang/Driver/Tool.h>
-#include <clang/Frontend/CompilerInstance.h>
-#include <clang/Frontend/CompilerInvocation.h>
-
-#include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/CommandLine.h>
-#include <llvm/Support/StringSaver.h>
-#include <llvm/TargetParser/Host.h>
 
 #include "common.hpp"
 #include "nixja_gen.hpp"
@@ -245,6 +233,8 @@ Result<void> create_derivation(
     // TODO: Consider replacing find with its absolute path?
     std::string linkPhase = fmt::format(
         "mkdir -p \"$NIX_BUILD_TOP\"; "
+        /// TODO: What if the output file is already generated?
+        /// Like a .object file be written for a local build
         "(cd {0}; "
         /// Visit every directory and creates the same directory tree
         /// under $NIX_BUILD_TOP.Those directories are real and writable.
@@ -445,6 +435,7 @@ Result<void> process_standard_edge(
         .buildPhase = buildPhase,
         .installPhase = installPhase,
         .outputMethod = "nar",
+        .inputSrcs = { },
     };
 
     TRY(create_derivation(edge, spec, false, source_root, source_store_path, build_relative, store, edge_map));
