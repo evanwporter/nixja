@@ -371,16 +371,16 @@ Result<void> create_derivation(
         }
 
         completeSpec.buildCommand = make_task_command(task_path, {
-                                                                  .inputs = task_inputs,
-                                                                  .outputs = [&] {
-                                                                      std::vector<fs::path> outputs;
-                                                                      for (const auto& output : edge->outputs_)
-                                                                          outputs.push_back(output->path());
-                                                                      return outputs;
-                                                                  }(),
-                                                                  .build_dir = build_relative,
-                                                                  .command = command.command,
-                                                              });
+                                                                     .inputs = task_inputs,
+                                                                     .outputs = [&] {
+                                                                         std::vector<fs::path> outputs;
+                                                                         for (const auto& output : edge->outputs_)
+                                                                             outputs.push_back(output->path());
+                                                                         return outputs;
+                                                                     }(),
+                                                                     .build_dir = build_relative,
+                                                                     .command = command.command,
+                                                                 });
 
         inputSrcs.push_back(task_store_name);
         if (!task_is_store_path) {
@@ -565,11 +565,11 @@ Result<void> process_dynamic_edge(
         shell_quote(command));
 
     const std::string task_command = make_task_command(task_path, {
-                                                                    .inputs = task_inputs,
-                                                                    .source_store_path = source_store_path,
-                                                                    .build_dir = ".",
-                                                                    .command = scanner_command,
-                                                                });
+                                                                      .inputs = task_inputs,
+                                                                      .source_store_path = source_store_path,
+                                                                      .build_dir = ".",
+                                                                      .command = scanner_command,
+                                                                  });
 
     const std::string buildCommand = fmt::format(
         "NIXJA_SCAN_DEPS=$({}); "
