@@ -4,3 +4,6 @@
 [submodule "external/expected-fs"]
 	path = external/expected-fs
 	url = https://github.com/MrZLeo/expected-fs/
+[submodule "external/libpatchelf"]
+	path = external/libpatchelf
+	url = https://github.com/evanwporter/libpatchelf
