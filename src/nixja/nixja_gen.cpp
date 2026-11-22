@@ -268,6 +268,8 @@ Result<void> create_derivation(
             continue;
 
         const Edge* producer = input->in_edge();
+
+        // producer being null means this is a leaf node / source file
         if (producer == nullptr || !generates_drv)
             continue;
 
