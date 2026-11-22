@@ -265,11 +265,7 @@ Result<void> create_derivation(
             source_store_path);
     }
 
-    /// `collector` obtains the entire closure of nodes
-    InputsCollector collector;
-    collector.VisitNode(edge->outputs_.front());
-
-    for (const Node* input : collector.inputs()) {
+    for (const Node* input : edge->inputs_) {
         const fs::path path = input->path();
 
         /// Checking if the path is absolute filters out /nix/store paths
@@ -347,7 +343,7 @@ Result<void> create_derivation(
     json inputDrvs = json::object();
 
     /// TODO: Can we combine this loop with the one above
-    for (const auto node : collector.inputs()) {
+    for (const auto node : edge->inputs_) {
         if (const Edge* producer = node->in_edge()) {
 
             const auto& derivation = edge_map[producer->id_];
@@ -377,7 +373,7 @@ Result<void> create_derivation(
     auto completeSpec = spec;
     if (!generates_drv) {
         std::vector<std::pair<fs::path, std::string>> task_inputs;
-        for (const Node* input : collector.inputs()) {
+        for (const Node* input : edge->inputs_) {
             const fs::path path = input->path();
             if (path.is_absolute())
                 continue;
