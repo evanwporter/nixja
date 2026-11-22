@@ -158,9 +158,18 @@ Result<Command> parseCommand(
                     /// TODO: Investigate whether I can get a string_view instead
                     programPath.string());
 
-            // Convert the absolute path to a relative one
-            // NOTE: Would it be better too provide a path in the nix store?
-            result.command.replace(0, program.size(), (fs::path(source_store_path) / path_relative).string());
+            const fs::path source_file = fs::canonical(programPath);
+            const auto stored_file = store->addToStore(
+                nixja_store_name(source_file.filename().string(), "nixja-gen"),
+                nix::makeFSSourceAccessor(source_file),
+                // Commands may be scripts; retain their executable bit.
+                nix::ContentAddressMethod::Raw::NixArchive);
+            const std::string store_path = store->printStorePath(stored_file);
+
+            // Execute the exact store object declared as an input, rather than
+            // referring to the source-tree archive that happens to contain it.
+            result.command.replace(0, program.size(), store_path);
+            result.inputSrcs.insert(store_path);
         }
     } else if (programPath.has_parent_path()) {
         // Relative executable, e.g. ./scripts/generate or bin/tool
