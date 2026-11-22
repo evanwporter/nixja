@@ -375,17 +375,34 @@ Result<void> process_static_edge(
         '_');
 
     TaskSpec task_spec;
-    task_spec.inputs = add_dependencies_to_store(
-        edge->inputs_, store, source_root, source_root / build_relative);
+    std::vector<const Node*> source_inputs;
+    source_inputs.reserve(edge->inputs_.size());
     for (const Node* input : edge->inputs_) {
         const Edge* producer = input->in_edge();
-        if (producer == nullptr)
-            continue;
 
+        // If this file has no producer then its a source file and
+        // needs to be added to the store.
+        if (producer == nullptr) {
+            source_inputs.push_back(input);
+            continue;
+        }
+
+        // Otherwise a previous build edge / derivation produced it, and so
+        // we need to obtain the output path of the derivation.
         task_spec.inputs.emplace_back(
             fs::path(edge_map[producer->id_].output_path) / input->path(),
             (build_relative / input->path()).lexically_normal());
     }
+
+    // Add every source file to the store and returns a list of StoreFiles
+    const auto stored_source_inputs = add_dependencies_to_store(
+        source_inputs, store, source_root, source_root / build_relative);
+
+    task_spec.inputs.insert(
+        task_spec.inputs.begin(),
+        stored_source_inputs.begin(),
+        stored_source_inputs.end());
+
     for (const auto output : edge->outputs_)
         task_spec.outputs.push_back(output->path());
     task_spec.build_relative = build_relative;
