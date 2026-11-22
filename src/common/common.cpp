@@ -61,9 +61,6 @@ Result<nix::Derivation> buildDerivation(
     json env = spec.extraEnv;
     env["name"] = derivation_name;
     env["PATH"] = spec.path.empty() ? core_path : core_path + ":" + spec.path;
-    env["linkPhase"] = spec.linkPhase;
-    env["buildPhase"] = spec.buildPhase;
-    env["installPhase"] = spec.installPhase;
     env["outputs"] = "out";
     env["requiredSystemFeatures"] = "recursive-nix";
     env["out"] = nix::hashPlaceholder("out");
@@ -90,8 +87,7 @@ Result<nix::Derivation> buildDerivation(
         { "version", 4u },
         {
             "args",
-            // TODO: Only append the phase var if its not empty
-            json::array({ "-e", "-c", "eval \"$linkPhase\"; eval \"$buildPhase\"; eval \"$installPhase\"" }),
+            json::array({ "-e", "-c", spec.buildCommand }),
         },
         { "env", env },
         { "inputs", {

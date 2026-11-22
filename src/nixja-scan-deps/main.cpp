@@ -221,7 +221,8 @@ int main(int argc, char* argv[]) {
         store_paths.emplace_back(file_relative, store->printStorePath(stored));
     }
 
-    const fs::path configured_task_path = NIXJA_TASK_PATH;
+    const char* task_path_override = std::getenv("NIXJA_TASK_PATH");
+    const fs::path configured_task_path = task_path_override ? task_path_override : NIXJA_TASK_PATH;
     fs::path task_path = configured_task_path;
     std::string task_store_name;
     const bool task_is_store_path = configured_task_path.is_absolute() && configured_task_path.string().starts_with("/nix/store/");
@@ -246,16 +247,16 @@ int main(int argc, char* argv[]) {
         task_store_name = task_path.filename().string();
     }
 
-    std::string buildPhase = fmt::format(
+    std::string buildCommand = fmt::format(
         "{} -C {} -i",
         shell_quote(task_path.string()),
         shell_quote(build_relative.generic_string()));
     for (const auto& [file_relative, store_path] : store_paths)
-        buildPhase += fmt::format(" {}", shell_quote(fmt::format("{}:{}", store_path, file_relative.generic_string())));
-    buildPhase += " -o";
+        buildCommand += fmt::format(" {}", shell_quote(fmt::format("{}:{}", store_path, file_relative.generic_string())));
+    buildCommand += " -o";
     for (const auto& output : outputs)
-        buildPhase += fmt::format(" {}", shell_quote(output));
-    buildPhase += fmt::format(" -- {}", shell_quote(command));
+        buildCommand += fmt::format(" {}", shell_quote(output));
+    buildCommand += fmt::format(" -- {}", shell_quote(command));
 
     /// Add each storePath as a inputSrc
     std::vector<std::string> inputSrcs;
@@ -267,19 +268,17 @@ int main(int argc, char* argv[]) {
         inputSrcs.push_back(fs::path(storePath).filename().string());
 
     inputSrcs.push_back(task_store_name);
-    if (!task_is_store_path) {
-        inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
-        inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
-        inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
-        inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
-    }
+    inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
 
     const json inputDrvs = json::object();
 
     const auto path = writeDerivation(store, {
                                                  .name = name,
                                                  .storeNamePrefix = "nixja-scan-deps",
-                                                 .buildPhase = buildPhase,
+                                                 .buildCommand = buildCommand,
                                                  .outputMethod = "nar",
                                                  .inputSrcs = inputSrcs,
                                                  .inputDrvs = inputDrvs,

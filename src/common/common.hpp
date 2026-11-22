@@ -108,11 +108,8 @@ struct DerivationSpec {
     /// Additional PATH entries, appended after the core packages.
     std::string path;
 
-    /// TODO: set defaults
-
-    std::string linkPhase;
-    std::string buildPhase;
-    std::string installPhase;
+    /// Shell command run by the derivation builder.
+    std::string buildCommand;
 
     /// `nar` or `text`
     std::string outputMethod;

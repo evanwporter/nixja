@@ -237,57 +237,12 @@ Result<void> create_derivation(
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
 
-    // processing a edge means creating a drv file for it
-
-    std::string linkPhase;
-    if (generates_drv) {
-        // TODO: Consider replacing find with its absolute path?
-        linkPhase = fmt::format(
-            "mkdir -p \"$NIX_BUILD_TOP\"; "
-            /// TODO: What if the output file is already generated?
-            /// Like a .object file be written for a local build
-            "(cd {0}; "
-            /// Visit every directory and creates the same directory tree
-            /// under $NIX_BUILD_TOP.Those directories are real and writable.
-            "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
-            /// Visits every non directory—regular files and symlinks and creates
-            /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
-            /// to the immutable source-store file.
-            "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
-            source_store_path);
-    }
-
-    for (const Node* input : edge->inputs_) {
-        const fs::path path = input->path();
-
-        /// Checking if the path is absolute filters out /nix/store paths
-        if (path.is_absolute())
-            continue;
-
-        const Edge* producer = input->in_edge();
-
-        // producer being null means this is a leaf node / source file
-        if (producer == nullptr || !generates_drv)
-            continue;
-
-        const fs::path destination = (build_relative / path).lexically_normal();
-
-        /// The target of the symlink
-        const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
-        linkPhase += fmt::format(
-            // create all the directories up to destination path
-            "mkdir -p \"$NIX_BUILD_TOP/{}\"; "
-            // -sfn ensures that ln doesn't fail if the destination already exists
-            "ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
-            destination.parent_path().string(),
-            nix_reference,
-            destination.string());
-    }
-
     const fs::path nixja_scan_deps_path = NIXJA_SCAN_DEPS_PATH;
 
     // Collect source inputs.
     std::vector<std::string> inputSrcs;
+    if (!spec.inputSrcs.is_null())
+        inputSrcs = spec.inputSrcs;
 
     if (generates_drv)
         inputSrcs.push_back(fs::path(source_store_path).filename().string());
@@ -411,19 +366,18 @@ Result<void> create_derivation(
             task_store_name = task_path.filename().string();
         }
 
-        completeSpec.buildPhase = fmt::format(
+        completeSpec.buildCommand = fmt::format(
             "{} -C {} -i",
             shell_quote(task_path.string()),
             shell_quote(build_relative.generic_string()));
         for (const auto& [destination, store_path] : task_inputs)
-            completeSpec.buildPhase += fmt::format(
+            completeSpec.buildCommand += fmt::format(
                 " {}",
                 shell_quote(fmt::format("{}:{}", store_path, destination.generic_string())));
-        completeSpec.buildPhase += " -o";
+        completeSpec.buildCommand += " -o";
         for (const auto& output : edge->outputs_)
-            completeSpec.buildPhase += fmt::format(" {}", shell_quote(output->path()));
-        completeSpec.buildPhase += fmt::format(" -- {}", shell_quote(command.command));
-        completeSpec.installPhase.clear();
+            completeSpec.buildCommand += fmt::format(" {}", shell_quote(output->path()));
+        completeSpec.buildCommand += fmt::format(" -- {}", shell_quote(command.command));
 
         inputSrcs.push_back(task_store_name);
         if (!task_is_store_path) {
@@ -433,7 +387,6 @@ Result<void> create_derivation(
             inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
         }
     }
-    completeSpec.linkPhase = linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
     const auto drv_path = TRY(writeDerivation(store, completeSpec));
@@ -485,17 +438,13 @@ Result<void> process_static_edge(
         '.',
         '_');
 
-    // Construct build phase.
-    const std::string buildPhase = edge->EvaluateCommand();
-
-    // Construct install phase.
-    std::string installPhase = "mkdir -p \"$out\"; ";
+    std::string buildCommand = edge->EvaluateCommand() + "; mkdir -p \"$out\"; ";
 
     for (const auto& output : edge->outputs_) {
         const fs::path parent = fs::path(output->path()).parent_path();
         if (!parent.empty())
-            installPhase += fmt::format("mkdir -p \"$out/{0}\"; ", parent.generic_string());
-        installPhase += fmt::format(
+            buildCommand += fmt::format("mkdir -p \"$out/{0}\"; ", parent.generic_string());
+        buildCommand += fmt::format(
             "cp '{0}' \"$out/{0}\"; ",
             output->path());
     }
@@ -504,8 +453,7 @@ Result<void> process_static_edge(
     const DerivationSpec spec {
         .name = derivationName,
         .storeNamePrefix = "nixja-gen",
-        .buildPhase = buildPhase,
-        .installPhase = installPhase,
+        .buildCommand = buildCommand,
         .outputMethod = "nar",
         .inputSrcs = { },
     };
@@ -536,28 +484,95 @@ Result<void> process_dynamic_edge(
     // Construct command.
     const std::string command = edge->EvaluateCommand();
 
+    const fs::path configured_task_path = NIXJA_TASK_PATH;
+    fs::path task_path = configured_task_path;
+    std::string task_store_name;
+    const bool task_is_store_path = configured_task_path.is_absolute()
+        && configured_task_path.string().starts_with("/nix/store/");
+
+    if (task_is_store_path) {
+        const auto [task_store_path, sub_path] = store->toStorePath(configured_task_path.string());
+        task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
+    } else {
+        const fs::path local_task = configured_task_path.is_absolute()
+            ? configured_task_path
+            : source_root / configured_task_path;
+        if (!fs::exists(local_task))
+            return Err("nixja-task not found at {}", local_task.string());
+
+        const auto stored_task = store->addToStore(
+            nixja_store_name("nixja-task", "nixja-gen"),
+            nix::makeFSSourceAccessor(fs::canonical(local_task)),
+            nix::ContentAddressMethod::Raw::NixArchive);
+        task_path = store->printStorePath(stored_task);
+        task_store_name = task_path.filename().string();
+    }
+
+    const fs::path configured_scanner_path = NIXJA_SCAN_DEPS_PATH;
+    fs::path scanner_path = configured_scanner_path;
+    std::string scanner_store_name;
+    const bool scanner_is_store_path = configured_scanner_path.is_absolute()
+        && configured_scanner_path.string().starts_with("/nix/store/");
+
+    if (scanner_is_store_path) {
+        const auto [scanner_store_path, sub_path] = store->toStorePath(configured_scanner_path.string());
+        scanner_store_name = fs::path(store->printStorePath(scanner_store_path)).filename().string();
+    } else {
+        const fs::path local_scanner = configured_scanner_path.is_absolute()
+            ? configured_scanner_path
+            : source_root / configured_scanner_path;
+        if (!fs::exists(local_scanner))
+            return Err("nixja-scan-deps not found at {}", local_scanner.string());
+
+        const auto stored_scanner = store->addToStore(
+            nixja_store_name("nixja-scan-deps", "nixja-gen"),
+            nix::makeFSSourceAccessor(fs::canonical(local_scanner)),
+            nix::ContentAddressMethod::Raw::NixArchive);
+        scanner_path = store->printStorePath(stored_scanner);
+        scanner_store_name = scanner_path.filename().string();
+    }
+
     // Construct scanner output arguments.
     std::string outputs_str;
 
     for (const auto& output : edge->outputs_)
         outputs_str += output->path();
 
-    const std::string buildPhase = fmt::format(
-        "NIXJA_SCAN_DEPS=$({} -C '{}' "
+    std::string task_inputs;
+    for (const Node* input : edge->inputs_) {
+        const fs::path path = input->path();
+        if (path.is_absolute())
+            continue;
+
+        if (const Edge* producer = input->in_edge()) {
+            const fs::path destination = (build_relative / path).lexically_normal();
+            const std::string source = edge_map[producer->id_].output_path + "/" + path.generic_string();
+            task_inputs += fmt::format(
+                " {}",
+                shell_quote(fmt::format("{}:{}", source, destination.generic_string())));
+        }
+    }
+
+    const std::string buildCommand = fmt::format(
+        "export NIXJA_TASK_PATH={}; NIXJA_SCAN_DEPS=$({} -d {} -C . -i{} -- {} -C {} "
         "-i TODO -o {} -- {}); "
-        "cp \"$NIXJA_SCAN_DEPS\" \"$out\"",
-        NIXJA_SCAN_DEPS_PATH,
-        build_relative.generic_string(),
+        "rmdir \"$out\"; cp \"$NIXJA_SCAN_DEPS\" \"$out\"",
+        shell_quote(task_path.string()),
+        shell_quote(task_path.string()),
+        shell_quote(source_store_path),
+        task_inputs,
+        shell_quote(scanner_path.string()),
+        shell_quote(build_relative.generic_string()),
         outputs_str,
-        command);
+        shell_quote(command));
 
     // Configure derivation.
     const DerivationSpec spec {
         .name = derivationName,
         .storeNamePrefix = "nixja-gen",
-        .buildPhase = buildPhase,
-        .installPhase = "",
+        .buildCommand = buildCommand,
         .outputMethod = "text",
+        .inputSrcs = { task_store_name, scanner_store_name },
     };
 
     TRY(create_derivation(edge, spec, true, source_root, source_store_path, build_relative, store, edge_map));
@@ -722,9 +737,7 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
     /// The final derivation (*.drv)
     const auto final_drv = TRY(writeDerivation(store, {
                                                           .name = target,
-                                                          .linkPhase = "",
-                                                          .buildPhase = "",
-                                                          .installPhase = fmt::format("cp -r \"{}\" \"$out\"", generated_output.render()),
+                                                          .buildCommand = fmt::format("cp -r \"{}\" \"$out\"", generated_output.render()),
                                                           .outputMethod = "nar",
                                                           .inputSrcs = json::array(),
                                                           .inputDrvs = finalInputDrvs,

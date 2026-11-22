@@ -46,6 +46,9 @@ Result<void> linkPhase(const std::vector<StoreFile>& inputs, const fs::path& nix
     for (const auto& store_file : inputs) {
         const auto destination = nix_build_top / store_file.file_relative;
         TRY_EC(fs::create_directories(destination.parent_path()));
+        // Inputs produced by an earlier edge replace a source-tree symlink at
+        // the same location.
+        TRY_EC(fs::remove(destination));
         TRY_EC(fs::create_symlink(store_file.source_store_path, destination));
     }
 
