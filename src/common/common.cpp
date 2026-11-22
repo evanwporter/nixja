@@ -169,55 +169,6 @@ std::string add_file_to_store_with_parents(
     return store->printStorePath(stored);
 }
 
-std::string generate_link_phase(
-    const std::string& input,
-    const std::vector<std::string>& outputs,
-    const std::string& source_store_path) {
-
-    // The input is a directory (presumably the `source_root`).
-
-    // TODO: Consider replacing find with its absolute path?
-    std::string linkPhase = fmt::format(
-        "mkdir -p \"$NIX_BUILD_TOP\"; "
-        /// TODO: What if the output file is already generated?
-        /// Like a .object file be written for a local build
-        "(cd {0}; "
-        /// Visit every directory and creates the same directory tree
-        /// under $NIX_BUILD_TOP.Those directories are real and writable.
-        "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
-        /// Visits every non directory—regular files and symlinks and creates
-        /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
-        /// to the immutable source-store file.
-        "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
-        source_store_path);
-    return "";
-}
-
-std::string generate_link_phase(
-    // paths relative to `source_root`
-    const std::vector<fs::path>& inputs,
-    const std::vector<fs::path>& outputs,
-
-    // source_root path in nix store
-    const fs::path& source_store_path) {
-
-    // path under source root : path under nix store
-
-    // the input is a list of files
-
-    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
-    for (const auto& input : inputs) {
-        linkPhase += fmt::format(
-            "mkdir -p -- \"$NIX_BUILD_TOP\"/{0}; "
-            "ln -s {1}/{2} $NIX_BUILD_TOP/{2}; ",
-            input.parent_path().native(),
-            source_store_path.native(),
-            input.native());
-    }
-
-    return "";
-}
-
 /// Outputs everything after the `--` in the command
 /// TODO: Combine more efficiently with other cmd line parsing
 std::string arguments_after_separator(int argc, char* argv[]) {
