@@ -144,13 +144,23 @@ std::unordered_set<std::string> scan_dependencies(const std::string command) {
 }
 
 int main(int argc, char* argv[]) {
+    /// Inputs to the specific ninja edge
+    /// Currently unused since all this information can be gathered from the
+    /// scan command.
     std::vector<std::string> inputs;
+
+    /// Outputs of the ninja edge
     std::vector<std::string> outputs;
 
     std::vector<std::string>* current_list = nullptr;
 
     /// nixja-scan-deps starts in the reconstructed project source tree.
     const fs::path source_root = fs::current_path();
+
+    const fs::path configured_task_path = NIXJA_TASK_PATH;
+    const fs::path task_path = configured_task_path.is_absolute()
+        ? configured_task_path
+        : source_root / configured_task_path;
 
     /// The Ninja working directory relative to project_root.
     fs::path build_relative = ".";
@@ -191,6 +201,19 @@ int main(int argc, char* argv[]) {
     nix::initLibStore(true);
     const nix::ref<nix::Store> store = nix::openStore();
 
+    const fs::path task_command = [&] {
+        const fs::path canonical_task_path = fs::canonical(task_path);
+        if (store->isInStore(canonical_task_path.string())) {
+            return canonical_task_path;
+        }
+
+        const auto stored = store->addToStore(
+            nixja_store_name("nixja-task", "nixja-scan-deps"),
+            nix::makeFSSourceAccessor(canonical_task_path),
+            nix::ContentAddressMethod::Raw::Flat);
+        return fs::path(store->printStorePath(stored));
+    }();
+
     const auto dependencies = local_dependencies(scan_dependencies(command), store, source_root);
 
     /// TODO: Maybe give a error or something here?
@@ -205,9 +228,10 @@ int main(int argc, char* argv[]) {
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
 
-    /// [Relative path under `source_root`, absolute /nix/store/XYZ-path-filename]
-    std::vector<std::pair<fs::path, std::string>> store_paths;
+    /// [Absolute /nix/store/XYZ-path-filename, Relative path under source_root]
+    std::vector<StoreFile> store_paths;
 
+    // TODO: I use this pattern quite a bit I think
     for (const auto& dependency : dependencies.local) {
         const fs::path absolute = fs::absolute(dependency).lexically_normal();
         const fs::path file_relative = absolute.lexically_relative(source_root);
@@ -220,51 +244,31 @@ int main(int argc, char* argv[]) {
             nix::makeFSSourceAccessor(file),
             nix::ContentAddressMethod::Raw::Flat);
 
-        store_paths.emplace_back(file_relative, store->printStorePath(stored));
+        store_paths.emplace_back(store->printStorePath(stored), file_relative);
     }
 
-    std::string linkPhase = "mkdir -p \"$NIX_BUILD_TOP\"; ";
-    for (const auto [file_relative, store_path] : store_paths) {
-        const fs::path parent = file_relative.parent_path();
-        // TODO: Idk if we need to make this check
-        if (!parent.empty())
-            linkPhase += fmt::format(
-                "mkdir -p \"$NIX_BUILD_TOP/{}\"; ", parent.string());
-        linkPhase += fmt::format("ln -s {} \"$NIX_BUILD_TOP/{}\"; ", store_path, file_relative.string());
-    }
+    TaskSpec task_spec {
+        .inputs = store_paths,
+        .build_dir = build_relative,
+        .command = command,
+    };
 
-    /// Create the build directory and cd into it
-    linkPhase += fmt::format(
-        "mkdir -p \"$NIX_BUILD_TOP/{0}\"; "
-        "cd \"$NIX_BUILD_TOP/{0}\"; ",
-        build_relative.string());
-
-    std::string buildPhase;
-    for (const auto& output : outputs) {
-        const fs::path parent = fs::path(output).parent_path();
-        if (parent.empty())
-            continue;
-        buildPhase += fmt::format(
-            "mkdir -p '{0}'; ",
-            parent.generic_string());
-    }
-    buildPhase += command;
-
-    std::string installPhase = "mkdir -p \"$out\"; ";
-    for (const auto& output : outputs) {
-        const fs::path parent = fs::path(output).parent_path();
-        if (!parent.empty())
-            installPhase += fmt::format("mkdir -p \"$out/{0}\"; ", parent.generic_string());
-        installPhase += fmt::format(
-            "cp '{0}' \"$out/{0}\"; ",
-            output);
-    }
+    for (const auto& output : outputs)
+        task_spec.outputs.emplace_back(output);
 
     /// Add each storePath as a inputSrc
     std::vector<std::string> inputSrcs;
-    inputSrcs.reserve(store_paths.size());
-    for (const auto& [file_relative, storePath] : store_paths)
+    inputSrcs.reserve(store_paths.size() + 1);
+    for (const auto& [storePath, file_relative] : store_paths)
         inputSrcs.push_back(fs::path(storePath).filename().string());
+
+    const auto [task_store_path, _] = store->toStorePath(task_command.string());
+    inputSrcs.push_back(fs::path(store->printStorePath(task_store_path)).filename().string());
+    inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(CC_PACKAGE_PATH).filename().string());
 
     for (const auto& storePath : dependencies.store)
         inputSrcs.push_back(fs::path(storePath).filename().string());
@@ -274,9 +278,7 @@ int main(int argc, char* argv[]) {
     const auto path = writeDerivation(store, {
                                                  .name = name,
                                                  .storeNamePrefix = "nixja-scan-deps",
-                                                 .linkPhase = linkPhase,
-                                                 .buildPhase = buildPhase,
-                                                 .installPhase = installPhase,
+                                                 .buildPhase = make_task_command(task_spec, task_command),
                                                  .outputMethod = "nar",
                                                  .inputSrcs = inputSrcs,
                                                  .inputDrvs = inputDrvs,

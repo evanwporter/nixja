@@ -144,7 +144,7 @@ struct TaskSpec {
 };
 
 /// Render the Bash builder command for a TaskSpec.
-std::string make_task_command(const TaskSpec& spec);
+std::string make_task_command(const TaskSpec& spec, const std::filesystem::path& task_command);
 
 /// Build a derivation and write it to the nix store. The return is the path in the store.
 /// TODO: fold this into buildDerivation

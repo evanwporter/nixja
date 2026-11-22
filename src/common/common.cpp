@@ -3,6 +3,7 @@
 #include <filesystem>
 
 #include <fmt/format.h>
+
 #include <nix/store/derivations.hh>
 #include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
@@ -160,4 +161,29 @@ std::string arguments_after_separator(int argc, char* argv[]) {
     }
 
     return result.str();
+}
+
+std::string make_task_command(const TaskSpec& spec, const fs::path& task_command) {
+    std::string inputs;
+    for (const auto& input : spec.inputs) {
+        inputs += fmt::format("{}:{} ", input.source_store_path.string(), input.file_relative.string());
+    }
+
+    std::string outputs;
+    for (const auto& output : spec.outputs) {
+        outputs += fmt::format("{} ", output.string());
+    }
+
+    std::string input_directory;
+    if (spec.source_store_path.has_value())
+        input_directory = fmt::format(" -d {}", spec.source_store_path->string());
+
+    return fmt::format(
+        "{} -i {} -o {}{} -C {} -- {}",
+        task_command.string(),
+        inputs,
+        outputs,
+        input_directory,
+        spec.build_dir.string(),
+        spec.command);
 }
