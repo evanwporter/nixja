@@ -27,29 +27,39 @@ std::string nixja_store_name(const std::string_view name, const std::string_view
     return prefix_with_separator + std::string(name);
 }
 
-std::string make_task_command(const fs::path& task_path, const TaskSpec& spec) {
-    std::string command = shell_quote(task_path.string());
-
-    if (spec.source_store_path)
-        command += fmt::format(" -d {}", shell_quote(spec.source_store_path->string()));
-
-    command += fmt::format(" -C {}", shell_quote(spec.build_dir.string()));
-
-    if (!spec.inputs.empty()) {
-        command += " -i";
-        for (const auto& input : spec.inputs)
-            command += fmt::format(
-                " {}",
-                shell_quote(fmt::format("{}:{}", input.source_store_path.string(), input.file_relative.generic_string())));
+std::string make_task_command(const TaskSpec& spec) {
+    std::string command = "mkdir -p \"$NIX_BUILD_TOP\"; ";
+    if (spec.source_store_path) {
+        command += fmt::format(
+            "(cd {}; find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
+            "find . ! -type d -exec ln -s \"{}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
+            shell_quote(spec.source_store_path->string()),
+            spec.source_store_path->string());
     }
-
+    for (const auto& input : spec.inputs) {
+        const auto destination = input.file_relative.generic_string();
+        command += fmt::format(
+            "mkdir -p \"$NIX_BUILD_TOP/{}\"; rm -f \"$NIX_BUILD_TOP/{}\"; ln -s \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
+            input.file_relative.parent_path().generic_string(), destination,
+            input.source_store_path.string(), destination);
+    }
+    command += fmt::format("mkdir -p \"$NIX_BUILD_TOP/{}\"; cd \"$NIX_BUILD_TOP/{}\"; ", spec.build_dir.generic_string(), spec.build_dir.generic_string());
+    for (const auto& output : spec.outputs) {
+        const auto parent = output.parent_path();
+        if (!parent.empty())
+            command += fmt::format("mkdir -p {}; ", shell_quote(parent.generic_string()));
+    }
+    command += fmt::format("bash -e -c {}; ", shell_quote(spec.command));
     if (!spec.outputs.empty()) {
-        command += " -o";
-        for (const auto& output : spec.outputs)
-            command += fmt::format(" {}", shell_quote(output.generic_string()));
+        command += "mkdir -p \"$out\"; ";
+        for (const auto& output : spec.outputs) {
+            const auto parent = output.parent_path();
+            if (!parent.empty())
+                command += fmt::format("mkdir -p \"$out/{}\"; ", parent.generic_string());
+            command += fmt::format("cp {} \"$out/{}\"; ", shell_quote(output.generic_string()), output.generic_string());
+        }
     }
-
-    return command + fmt::format(" -- {}", shell_quote(spec.command));
+    return command;
 }
 
 /// TODO: think about moving this out of the header file

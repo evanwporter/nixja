@@ -144,10 +144,8 @@ struct TaskSpec {
     std::string command;
 };
 
-/// Render a TaskSpec as a shell command accepted by nixja-task.
-std::string make_task_command(
-    const std::filesystem::path& task_path,
-    const TaskSpec& spec);
+/// Render the Bash builder command for a TaskSpec.
+std::string make_task_command(const TaskSpec& spec);
 
 /// Build a derivation and write it to the nix store. The return is the path in the store.
 /// TODO: fold this into buildDerivation
