@@ -85,3 +85,9 @@
 
 40. ~~For nixja-gen static deps; build files in a env with only the input objects (as opposed to the entire source root directory)~~
 
+41. Figure out how to cache a dep list between builds
+    - Such that the build remains pure
+    - And a incorrect dependency list won't cause the build to fail
+
+42. Create global reference of which files have been added to the store so I don't try and add a file twice (primarily in nixja-gen)
+    - Maybe its valuable to pass this onto nixja-scan-deps?
