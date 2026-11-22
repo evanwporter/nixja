@@ -72,6 +72,51 @@ struct Command {
     std::unordered_set<std::string> inputSrcs;
 };
 
+/// Convert Ninja inputs into the source-store paths and workspace locations
+/// consumed by TaskSpec. Source nodes are included only when requested; a
+/// dynamic wrapper receives its source tree through TaskSpec::source_store_path.
+Result<std::vector<StoreFile>> task_inputs_from_ninja_inputs(
+    const std::vector<Node*>& inputs,
+    const bool include_source_nodes,
+    const fs::path& source_root,
+    const fs::path& build_relative,
+    const nix::ref<nix::Store>& store,
+    const std::vector<Derivation>& edge_map) {
+
+    std::vector<StoreFile> result;
+    result.reserve(inputs.size());
+
+    for (const Node* input : inputs) {
+        const fs::path path = input->path();
+        if (path.is_absolute())
+            continue;
+
+        const fs::path destination = (build_relative / path).lexically_normal();
+        if (const Edge* producer = input->in_edge()) {
+            result.push_back({
+                .source_store_path = edge_map[producer->id_].output_path + "/" + path.generic_string(),
+                .file_relative = destination,
+            });
+            continue;
+        }
+
+        if (!include_source_nodes)
+            continue;
+
+        const fs::path source_file = fs::canonical(source_root / build_relative / path);
+        const auto stored_file = store->addToStore(
+            nixja_store_name(source_file.filename().string(), "nixja-gen"),
+            nix::makeFSSourceAccessor(source_file),
+            nix::ContentAddressMethod::Raw::Flat);
+        result.push_back({
+            .source_store_path = store->printStorePath(stored_file),
+            .file_relative = destination,
+        });
+    }
+
+    return result;
+}
+
 /// This function parses a compilation command using the LLVM TOKENIZER.
 /// It returns a list of the include paths and the library paths.
 /// TODO: Check if paths exist
@@ -319,32 +364,16 @@ Result<void> create_derivation(
 
     auto completeSpec = spec;
     if (!generates_drv) {
-        std::vector<StoreFile> task_inputs;
+        const auto task_inputs = TRY(task_inputs_from_ninja_inputs(
+            edge->inputs_, true, source_root, build_relative, store, edge_map));
+
+        size_t task_input_index = 0;
         for (const Node* input : edge->inputs_) {
-            const fs::path path = input->path();
-            if (path.is_absolute())
+            if (fs::path(input->path()).is_absolute())
                 continue;
-
-            const fs::path destination = (build_relative / path).lexically_normal();
-            if (const Edge* producer = input->in_edge()) {
-                task_inputs.push_back({
-                    .source_store_path = edge_map[producer->id_].output_path + "/" + path.generic_string(),
-                    .file_relative = destination,
-                });
-                continue;
-            }
-
-            const fs::path source_file = fs::canonical(source_root / build_relative / path);
-            const auto stored_file = store->addToStore(
-                nixja_store_name(source_file.filename().string(), "nixja-gen"),
-                nix::makeFSSourceAccessor(source_file),
-                nix::ContentAddressMethod::Raw::Flat);
-            const std::string store_path = store->printStorePath(stored_file);
-            task_inputs.push_back({
-                .source_store_path = store_path,
-                .file_relative = destination,
-            });
-            inputSrcs.push_back(fs::path(store_path).filename().string());
+            if (input->in_edge() == nullptr)
+                inputSrcs.push_back(task_inputs[task_input_index].source_store_path.filename().string());
+            ++task_input_index;
         }
 
         const fs::path configured_task_path = NIXJA_TASK_PATH;
@@ -541,20 +570,8 @@ Result<void> process_dynamic_edge(
     for (const auto& output : edge->outputs_)
         outputs_str += output->path();
 
-    std::vector<StoreFile> task_inputs;
-    for (const Node* input : edge->inputs_) {
-        const fs::path path = input->path();
-        if (path.is_absolute())
-            continue;
-
-        if (const Edge* producer = input->in_edge()) {
-            const fs::path destination = (build_relative / path).lexically_normal();
-            task_inputs.push_back({
-                .source_store_path = edge_map[producer->id_].output_path + "/" + path.generic_string(),
-                .file_relative = destination,
-            });
-        }
-    }
+    const auto task_inputs = TRY(task_inputs_from_ninja_inputs(
+        edge->inputs_, false, source_root, build_relative, store, edge_map));
 
     const std::string scanner_command = fmt::format(
         "export NIXJA_TASK_PATH={}; {} -C {} -i TODO -o {} -- {}",
