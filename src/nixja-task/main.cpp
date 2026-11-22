@@ -53,6 +53,23 @@ Result<void> linkPhase(const std::vector<StoreFile>& inputs, const fs::path& nix
     return { };
 }
 
+/// Creates a mirror of all the directories and symlinks the files.
+Result<void> linkSourceTree(
+    const fs::path& input_directory,
+    const fs::path& nix_build_top) {
+    TRY_EC(fs::create_directories(nix_build_top));
+    for (const auto& entry : fs::recursive_directory_iterator(input_directory)) {
+        const fs::path relative = entry.path().lexically_relative(input_directory);
+        const fs::path destination = nix_build_top / relative;
+        if (entry.is_directory())
+            TRY_EC(fs::create_directories(destination));
+        else
+            TRY_EC(fs::create_symlink(entry.path(), destination));
+    }
+
+    return { };
+}
+
 Result<void> buildPhase(const std::vector<StoreFile>& inputs, const std::vector<fs::path> outputs, const fs::path& nix_build_top, const fs::path& build_relative, const std::string& command) {
     // cd into the build directory
     TRY_EC(fs::current_path(nix_build_top / build_relative));
