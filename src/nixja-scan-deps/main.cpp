@@ -249,10 +249,6 @@ int main(int argc, char* argv[]) {
         inputSrcs.push_back(fs::path(storePath).filename().string());
 
     inputSrcs.push_back(task_store_name);
-    inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
-    inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
-    inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
-    inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
 
     const json inputDrvs = json::object();
 
