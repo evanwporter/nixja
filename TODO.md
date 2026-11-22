@@ -83,4 +83,5 @@
 
 39. Patch ELF with `so` location in nix store
 
-40. Build files in a env with only the input objects (as opposed to the entire source root directory)
+40. ~~For nixja-gen static deps; build files in a env with only the input objects (as opposed to the entire source root directory)~~
+
