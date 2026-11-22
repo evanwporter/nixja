@@ -529,12 +529,15 @@ Result<void> process_dynamic_edge(
 
     const std::string buildPhase = fmt::format(
         "NIXJA_SCAN_DEPS=$({} -C '{}' "
-        "-i TODO -o {} -- {}); "
-        "cp \"$NIXJA_SCAN_DEPS\" \"$out\"",
+        "-i TODO -o {} -- {}); ",
         NIXJA_SCAN_DEPS_PATH,
         build_relative.generic_string(),
         outputs_str,
         command);
+
+    /// $NIXJA_SCAN_DEPS is a path to a derivation in the nix store. We
+    /// copy this derivation to $out.
+    const std::string installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"";
 
     // Configure derivation.
     const DerivationSpec spec {
@@ -542,7 +545,7 @@ Result<void> process_dynamic_edge(
         .storeNamePrefix = "nixja-gen",
         .linkPhase = linkPhase,
         .buildPhase = buildPhase,
-        .installPhase = "",
+        .installPhase = installPhase,
         .outputMethod = "text",
     };
 
