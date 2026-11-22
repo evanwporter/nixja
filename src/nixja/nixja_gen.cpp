@@ -380,8 +380,13 @@ Result<void> process_static_edge(
         '_');
 
     TaskSpec task_spec;
+
+    /// Tracks source files (ie: files that already exist and don't need to be created by
+    /// a ninja edge). These files are then added to the store and then inputSrcs. They are
+    /// also passed along as inputs to `nixja-task`.
     std::vector<const Node*> source_inputs;
     source_inputs.reserve(edge->inputs_.size());
+
     for (const Node* input : edge->inputs_) {
         const Edge* producer = input->in_edge();
 
