@@ -28,6 +28,7 @@ using json = nlohmann::json;
 
 /// Parse Makefile dependency output from clang-scan-deps
 /// TODO: Use whatever ninja uses internally
+/// TODO: Can makefile_content be a reference instead?
 std::unordered_map<std::string, std::unordered_set<std::string>>
 parse_makefile(std::string makefile_content) {
     std::unordered_map<std::string, std::unordered_set<std::string>>
@@ -42,22 +43,22 @@ parse_makefile(std::string makefile_content) {
     std::string line;
 
     while (std::getline(file_stream, line)) {
-        size_t start = line.find_first_not_of(" \t\r");
+        const size_t start = line.find_first_not_of(" \t\r");
 
         if (start == std::string::npos || line[start] == '#')
             continue;
 
-        size_t colon = line.find(':');
+        const size_t colon = line.find(':');
 
         if (colon == std::string::npos)
             continue;
 
         std::string target = line.substr(start, colon - start);
 
-        size_t end = target.find_last_not_of(" \t\r");
+        const size_t end = target.find_last_not_of(" \t\r");
         target.erase(end + 1);
 
-        std::string dependencies = line.substr(colon + 1);
+        const std::string dependencies = line.substr(colon + 1);
 
         std::istringstream dep_stream(dependencies);
         std::string dependency;
