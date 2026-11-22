@@ -221,31 +221,9 @@ int main(int argc, char* argv[]) {
         store_paths.emplace_back(file_relative, store->printStorePath(stored));
     }
 
-    const char* task_path_override = std::getenv("NIXJA_TASK_PATH");
-    const fs::path configured_task_path = task_path_override ? task_path_override : NIXJA_TASK_PATH;
-    fs::path task_path = configured_task_path;
-    std::string task_store_name;
-    const bool task_is_store_path = configured_task_path.is_absolute() && configured_task_path.string().starts_with("/nix/store/");
-
-    if (task_is_store_path) {
-        const auto [task_store_path, sub_path] = store->toStorePath(configured_task_path.string());
-        task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
-    } else {
-        const fs::path local_task = configured_task_path.is_absolute()
-            ? configured_task_path
-            : source_root / configured_task_path;
-        if (!fs::exists(local_task)) {
-            std::cerr << "nixja-task not found at " << local_task << '\n';
-            return 1;
-        }
-
-        const auto stored_task = store->addToStore(
-            nixja_store_name("nixja-task", "nixja-scan-deps"),
-            nix::makeFSSourceAccessor(fs::canonical(local_task)),
-            nix::ContentAddressMethod::Raw::NixArchive);
-        task_path = store->printStorePath(stored_task);
-        task_store_name = task_path.filename().string();
-    }
+    const fs::path task_path = NIXJA_TASK_PATH;
+    const auto [task_store_path, sub_path] = store->toStorePath(task_path.string());
+    const std::string task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
 
     TaskSpec task_spec {
         .build_dir = build_relative,

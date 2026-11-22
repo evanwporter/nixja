@@ -376,28 +376,9 @@ Result<void> create_derivation(
             ++task_input_index;
         }
 
-        const fs::path configured_task_path = NIXJA_TASK_PATH;
-        fs::path task_path = configured_task_path;
-        std::string task_store_name;
-        const bool task_is_store_path = configured_task_path.is_absolute() && configured_task_path.string().starts_with("/nix/store/");
-
-        if (task_is_store_path) {
-            const auto [task_store_path, sub_path] = store->toStorePath(configured_task_path.string());
-            task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
-        } else {
-            const fs::path local_task = configured_task_path.is_absolute()
-                ? configured_task_path
-                : source_root / configured_task_path;
-            if (!fs::exists(local_task))
-                return Err("nixja-task not found at {}", local_task.string());
-
-            const auto stored_task = store->addToStore(
-                nixja_store_name("nixja-task", "nixja-gen"),
-                nix::makeFSSourceAccessor(fs::canonical(local_task)),
-                nix::ContentAddressMethod::Raw::NixArchive);
-            task_path = store->printStorePath(stored_task);
-            task_store_name = task_path.filename().string();
-        }
+        const fs::path task_path = NIXJA_TASK_PATH;
+        const auto [task_store_path, sub_path] = store->toStorePath(task_path.string());
+        const std::string task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
 
         completeSpec.buildCommand = make_task_command(task_path, {
                                                                      .inputs = task_inputs,
@@ -412,12 +393,6 @@ Result<void> create_derivation(
                                                                  });
 
         inputSrcs.push_back(task_store_name);
-        if (!task_is_store_path) {
-            inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
-            inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
-            inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
-            inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
-        }
     }
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
@@ -516,53 +491,13 @@ Result<void> process_dynamic_edge(
     // Construct command.
     const std::string command = edge->EvaluateCommand();
 
-    const fs::path configured_task_path = NIXJA_TASK_PATH;
-    fs::path task_path = configured_task_path;
-    std::string task_store_name;
-    const bool task_is_store_path = configured_task_path.is_absolute()
-        && configured_task_path.string().starts_with("/nix/store/");
+    const fs::path task_path = NIXJA_TASK_PATH;
+    const auto [task_store_path, task_sub_path] = store->toStorePath(task_path.string());
+    const std::string task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
 
-    if (task_is_store_path) {
-        const auto [task_store_path, sub_path] = store->toStorePath(configured_task_path.string());
-        task_store_name = fs::path(store->printStorePath(task_store_path)).filename().string();
-    } else {
-        const fs::path local_task = configured_task_path.is_absolute()
-            ? configured_task_path
-            : source_root / configured_task_path;
-        if (!fs::exists(local_task))
-            return Err("nixja-task not found at {}", local_task.string());
-
-        const auto stored_task = store->addToStore(
-            nixja_store_name("nixja-task", "nixja-gen"),
-            nix::makeFSSourceAccessor(fs::canonical(local_task)),
-            nix::ContentAddressMethod::Raw::NixArchive);
-        task_path = store->printStorePath(stored_task);
-        task_store_name = task_path.filename().string();
-    }
-
-    const fs::path configured_scanner_path = NIXJA_SCAN_DEPS_PATH;
-    fs::path scanner_path = configured_scanner_path;
-    std::string scanner_store_name;
-    const bool scanner_is_store_path = configured_scanner_path.is_absolute()
-        && configured_scanner_path.string().starts_with("/nix/store/");
-
-    if (scanner_is_store_path) {
-        const auto [scanner_store_path, sub_path] = store->toStorePath(configured_scanner_path.string());
-        scanner_store_name = fs::path(store->printStorePath(scanner_store_path)).filename().string();
-    } else {
-        const fs::path local_scanner = configured_scanner_path.is_absolute()
-            ? configured_scanner_path
-            : source_root / configured_scanner_path;
-        if (!fs::exists(local_scanner))
-            return Err("nixja-scan-deps not found at {}", local_scanner.string());
-
-        const auto stored_scanner = store->addToStore(
-            nixja_store_name("nixja-scan-deps", "nixja-gen"),
-            nix::makeFSSourceAccessor(fs::canonical(local_scanner)),
-            nix::ContentAddressMethod::Raw::NixArchive);
-        scanner_path = store->printStorePath(stored_scanner);
-        scanner_store_name = scanner_path.filename().string();
-    }
+    const fs::path scanner_path = NIXJA_SCAN_DEPS_PATH;
+    const auto [scanner_store_path, scanner_sub_path] = store->toStorePath(scanner_path.string());
+    const std::string scanner_store_name = fs::path(store->printStorePath(scanner_store_path)).filename().string();
 
     // Construct scanner output arguments.
     std::string outputs_str;
@@ -574,8 +509,7 @@ Result<void> process_dynamic_edge(
         edge->inputs_, false, source_root, build_relative, store, edge_map));
 
     const std::string scanner_command = fmt::format(
-        "export NIXJA_TASK_PATH={}; {} -C {} -i TODO -o {} -- {}",
-        shell_quote(task_path.string()),
+        "{} -C {} -i TODO -o {} -- {}",
         shell_quote(scanner_path.string()),
         shell_quote(build_relative.generic_string()),
         outputs_str,
