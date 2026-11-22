@@ -184,6 +184,6 @@ std::string make_task_command(const TaskSpec& spec, const fs::path& task_command
         inputs,
         outputs,
         input_directory,
-        spec.build_dir.string(),
+        spec.build_relative.string(),
         spec.command);
 }

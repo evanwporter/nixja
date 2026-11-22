@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 
 #include <fmt/format.h>
@@ -113,8 +114,8 @@ struct DerivationSpec {
     /// `nar` or `text`
     std::string outputMethod;
 
-    json inputSrcs;
-    json inputDrvs;
+    json inputSrcs = json::array();
+    json inputDrvs = json::object();
 
     /// TODO: Currently this is unused
     json extraEnv;
@@ -136,8 +137,8 @@ struct TaskSpec {
     /// The source_root directory in the nix store.
     std::optional<std::filesystem::path> source_store_path;
 
-    /// The build directory which command is run from
-    std::filesystem::path build_dir = ".";
+    /// The relative build directory which command is run from
+    std::filesystem::path build_relative = ".";
 
     /// The command to run
     std::string command;
@@ -167,3 +168,47 @@ Result<std::filesystem::path> parse_which(
 /// Outputs everything after the `--` in the command
 /// TODO: Combine more efficiently with other cmd line parsing
 std::string arguments_after_separator(int argc, char* argv[]);
+
+/// Add local dependencies to the Nix store, preserving their paths
+/// relative to the source root.
+template <std::ranges::input_range Range>
+std::vector<StoreFile> add_dependencies_to_store(
+    const Range& dependencies,
+    const nix::ref<nix::Store>& store,
+    const std::filesystem::path& source_root,
+    const std::filesystem::path& dependency_root) {
+
+    std::vector<StoreFile> store_paths;
+
+    if constexpr (std::ranges::sized_range<const Range>)
+        store_paths.reserve(std::ranges::size(dependencies));
+
+    for (const auto& dependency : dependencies) {
+        const std::filesystem::path dependency_path = [&] {
+            if constexpr (requires { dependency->path(); })
+                return std::filesystem::path(dependency->path());
+            else
+                return std::filesystem::path(dependency);
+        }();
+        const std::filesystem::path absolute = dependency_path.is_absolute()
+            ? dependency_path.lexically_normal()
+            : (dependency_root / dependency_path).lexically_normal();
+
+        // Ninja's phony nodes (for example, `PHONY`) are graph markers, not
+        // files that can be copied into the store.
+        if (!std::filesystem::exists(absolute))
+            continue;
+
+        const std::filesystem::path file_relative = absolute.lexically_relative(source_root);
+        const std::filesystem::path file = std::filesystem::canonical(absolute);
+
+        const auto stored = store->addToStore(
+            nixja_store_name(file.filename().string(), "nixja-scan-deps"),
+            nix::makeFSSourceAccessor(file),
+            nix::ContentAddressMethod::Raw::Flat);
+
+        store_paths.emplace_back(store->printStorePath(stored), file_relative);
+    }
+
+    return store_paths;
+}

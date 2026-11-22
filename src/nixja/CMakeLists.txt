@@ -33,6 +33,7 @@ target_precompile_headers(nixja PRIVATE
 target_compile_definitions(nixja PRIVATE
     NIXJA_VERSION="${NIXJA_VERSION}"
     NIXJA_SCAN_DEPS_PATH="${nixjaScanDeps}"
+    NIXJA_TASK_PATH="${nixjaTask}"
     NIX_STORE_PACKAGE_PATH="${NIX_STORE_PACKAGE_PATH}"
     NIX_UTIL_PACKAGE_PATH="${NIX_UTIL_PACKAGE_PATH}"
     FMT_PACKAGE_PATH="${FMT_PACKAGE_PATH}"

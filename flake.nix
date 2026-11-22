@@ -147,6 +147,7 @@
 
 					cmakeFlags = [
 						"-DnixjaScanDeps=${final.nixja-scan-deps}/bin/nixja-scan-deps"
+						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
 					];
 
 					installPhase = ''
@@ -160,6 +161,7 @@
                 --prefix PATH : ${final.lib.makeBinPath [
 								final.nix
 								final.nixja-scan-deps
+								final.nixja-task
 							]}:${final.corePath}
           '';
 				};

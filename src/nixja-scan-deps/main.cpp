@@ -229,27 +229,12 @@ int main(int argc, char* argv[]) {
         "ca-derivations dynamic-derivations");
 
     /// [Absolute /nix/store/XYZ-path-filename, Relative path under source_root]
-    std::vector<StoreFile> store_paths;
-
-    // TODO: I use this pattern quite a bit I think
-    for (const auto& dependency : dependencies.local) {
-        const fs::path absolute = fs::absolute(dependency).lexically_normal();
-        const fs::path file_relative = absolute.lexically_relative(source_root);
-
-        // Every dependency path must exist, because we aren't checking for errors here
-        const fs::path file = fs::canonical(absolute);
-
-        const auto stored = store->addToStore(
-            nixja_store_name(file.filename().string(), "nixja-scan-deps"),
-            nix::makeFSSourceAccessor(file),
-            nix::ContentAddressMethod::Raw::Flat);
-
-        store_paths.emplace_back(store->printStorePath(stored), file_relative);
-    }
+    const std::vector<StoreFile> store_paths = add_dependencies_to_store(
+        dependencies.local, store, source_root, source_root / build_relative);
 
     TaskSpec task_spec {
         .inputs = store_paths,
-        .build_dir = build_relative,
+        .build_relative = build_relative,
         .command = command,
     };
 

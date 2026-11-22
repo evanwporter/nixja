@@ -150,9 +150,18 @@ Result<Command> parseCommand(
                     /// TODO: Investigate whether I can get a string_view instead
                     programPath.string());
 
-            // Convert the absolute path to a relative one
-            // NOTE: Would it be better too provide a path in the nix store?
-            result.command.replace(0, program.size(), (fs::path(source_store_path) / path_relative).string());
+            const fs::path source_file = fs::canonical(programPath);
+            const auto stored_file = store->addToStore(
+                nixja_store_name(source_file.filename().string(), "nixja-gen"),
+                nix::makeFSSourceAccessor(source_file),
+                // Commands may be scripts; retain their executable bit.
+                nix::ContentAddressMethod::Raw::NixArchive);
+            const std::string store_path = store->printStorePath(stored_file);
+
+            // Execute the exact store object declared as an input, rather than
+            // referring to the source-tree archive that happens to contain it.
+            result.command.replace(0, program.size(), store_path);
+            result.inputSrcs.insert(store_path);
         }
     } else if (programPath.has_parent_path()) {
         // Relative executable, e.g. ./scripts/generate or bin/tool
@@ -230,71 +239,24 @@ Result<void> create_derivation(
 
     // processing a edge means creating a drv file for it
 
-    // TODO: Consider replacing find with its absolute path?
-    std::string linkPhase = fmt::format(
-        "mkdir -p \"$NIX_BUILD_TOP\"; "
-        /// TODO: What if the output file is already generated?
-        /// Like a .object file be written for a local build
-        "(cd {0}; "
-        /// Visit every directory and creates the same directory tree
-        /// under $NIX_BUILD_TOP.Those directories are real and writable.
-        "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
-        /// Visits every non directory—regular files and symlinks and creates
-        /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
-        /// to the immutable source-store file.
-        "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
-        source_store_path);
-
-    // /// `collector` obtains the entire closure of nodes
-    // InputsCollector collector;
-    // collector.VisitNode(edge->outputs_.front());
-
-    for (const Node* input : edge->inputs_) {
-        const fs::path path = input->path();
-
-        /// Checking if the path is absolute filters out /nix/store paths
-        if (path.is_absolute())
-            continue;
-
-        const Edge* producer = input->in_edge();
-
-        // producer being null means this is a leaf node / source file
-        if (producer == nullptr)
-            continue;
-
-        const fs::path destination = (build_relative / path).lexically_normal();
-        const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
-        linkPhase += fmt::format(
-            // create all the directories up to destination path
-            "mkdir -p \"$NIX_BUILD_TOP/{}\"; "
-            // -sfn ensures that ln doesn't fail if the destination already exists
-            "ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
-            destination.parent_path().string(),
-            nix_reference,
-            destination.string());
-    }
-
-    // This means that we are not calling `nixja-scan-deps`. Rather we are performing the
-    // operation ourself so we cd into build directory
-    if (!generates_drv)
-        linkPhase += fmt::format(
-            "cd \"$NIX_BUILD_TOP/{}\"; ",
-            build_relative.generic_string());
-
     const fs::path nixja_scan_deps_path = NIXJA_SCAN_DEPS_PATH;
+    const fs::path nixja_task_path = NIXJA_TASK_PATH;
 
     // Collect source inputs.
-    std::vector<std::string> inputSrcs;
+    std::vector<std::string> inputSrcs = spec.inputSrcs;
 
     inputSrcs.push_back(
         fs::path(source_store_path).filename().string());
 
     if (nixja_scan_deps_path.is_absolute())
         inputSrcs.push_back(nixja_scan_deps_path.parent_path().parent_path().filename().string());
+    if (nixja_task_path.is_absolute())
+        inputSrcs.push_back(nixja_task_path.parent_path().parent_path().filename().string());
     inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
+    inputSrcs.push_back(fs::path(CC_PACKAGE_PATH).filename().string());
 
     const auto command = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
 
@@ -360,9 +322,7 @@ Result<void> create_derivation(
     }
 
     auto completeSpec = spec;
-    if (!generates_drv)
-        completeSpec.buildPhase = command.command;
-    completeSpec.linkPhase = linkPhase;
+    completeSpec.linkPhase = spec.linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
     const auto drv_path = TRY(writeDerivation(store, completeSpec));
@@ -371,7 +331,8 @@ Result<void> create_derivation(
     std::string generated_path;
     std::string output_path;
 
-    const auto ca_output = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, "out");
+    const auto ca_output = nix::DownstreamPlaceholder::unknownCaOutput(
+        drv_path, "out");
 
     if (generates_drv) {
         generated_path = ca_output.render();
@@ -394,7 +355,7 @@ Result<void> create_derivation(
     return { };
 };
 
-Result<void> process_standard_edge(
+Result<void> process_static_edge(
     const Edge* edge,
     const fs::path& source_root,
     const std::string& source_store_path,
@@ -413,29 +374,48 @@ Result<void> process_standard_edge(
         '.',
         '_');
 
-    // Construct build phase.
-    const std::string buildPhase = edge->EvaluateCommand();
+    TaskSpec task_spec;
 
-    // Construct install phase.
-    std::string installPhase = "mkdir -p \"$out\"; ";
+    task_spec.inputs = add_dependencies_to_store(
+        edge->inputs_, store, source_root, source_root / build_relative);
+    for (const Node* input : edge->inputs_) {
+        const Edge* producer = input->in_edge();
+        if (producer == nullptr)
+            continue;
 
-    for (const auto& output : edge->outputs_) {
-        const fs::path parent = fs::path(output->path()).parent_path();
-        if (!parent.empty())
-            installPhase += fmt::format("mkdir -p \"$out/{0}\"; ", parent.generic_string());
-        installPhase += fmt::format(
-            "cp '{0}' \"$out/{0}\"; ",
-            output->path());
+        task_spec.inputs.emplace_back(
+            fs::path(edge_map[producer->id_].output_path) / input->path(),
+            (build_relative / input->path()).lexically_normal());
     }
+    for (const auto output : edge->outputs_)
+        task_spec.outputs.push_back(output->path());
+    task_spec.build_relative = build_relative;
+    task_spec.command = TRY(parseCommand(
+                                edge->EvaluateCommand(), source_root, source_store_path, store))
+                            .command;
+
+    const fs::path configured_task_path = NIXJA_TASK_PATH;
+    const fs::path task_path = configured_task_path.is_absolute()
+        ? configured_task_path
+        : source_root / configured_task_path;
+    const fs::path canonical_task_path = fs::canonical(task_path);
+    const fs::path task_command = store->isInStore(canonical_task_path.string())
+        ? canonical_task_path
+        : fs::path(store->printStorePath(store->addToStore(
+              nixja_store_name("nixja-task", "nixja-gen"),
+              nix::makeFSSourceAccessor(canonical_task_path),
+              nix::ContentAddressMethod::Raw::NixArchive)));
+
+    const auto [task_store_path, _] = store->toStorePath(task_command.string());
+    const auto buildPhase = make_task_command(task_spec, task_command);
 
     // Configure derivation.
     const DerivationSpec spec {
         .name = derivationName,
         .storeNamePrefix = "nixja-gen",
         .buildPhase = buildPhase,
-        .installPhase = installPhase,
         .outputMethod = "nar",
-        .inputSrcs = { },
+        .inputSrcs = json::array({ fs::path(store->printStorePath(task_store_path)).filename().string() }),
     };
 
     TRY(create_derivation(edge, spec, false, source_root, source_store_path, build_relative, store, edge_map));
@@ -443,7 +423,7 @@ Result<void> process_standard_edge(
     return { };
 }
 
-Result<void> process_dep_edge(
+Result<void> process_dynamic_edge(
     const Edge* edge,
     const fs::path& source_root,
     const std::string& source_store_path,
@@ -469,6 +449,50 @@ Result<void> process_dep_edge(
     for (const auto& output : edge->outputs_)
         outputs_str += output->path();
 
+    // TODO: Consider replacing find with its absolute path?
+    std::string linkPhase = fmt::format(
+        "mkdir -p \"$NIX_BUILD_TOP\"; "
+        /// TODO: What if the output file is already generated?
+        /// Like a .object file be written for a local build
+        "(cd {0}; "
+        /// Visit every directory and creates the same directory tree
+        /// under $NIX_BUILD_TOP.Those directories are real and writable.
+        "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
+        /// Visits every non directory—regular files and symlinks and creates
+        /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
+        /// to the immutable source-store file.
+        "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
+        source_store_path);
+
+    // /// `collector` obtains the entire closure of nodes
+    // InputsCollector collector;
+    // collector.VisitNode(edge->outputs_.front());
+
+    for (const Node* input : edge->inputs_) {
+        const fs::path path = input->path();
+
+        /// Checking if the path is absolute filters out /nix/store paths
+        if (path.is_absolute())
+            continue;
+
+        const Edge* producer = input->in_edge();
+
+        // producer being null means this is a leaf node / source file
+        if (producer == nullptr)
+            continue;
+
+        const fs::path destination = (build_relative / path).lexically_normal();
+        const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
+        linkPhase += fmt::format(
+            // create all the directories up to destination path
+            "mkdir -p \"$NIX_BUILD_TOP/{}\"; "
+            // -sfn ensures that ln doesn't fail if the destination already exists
+            "ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
+            destination.parent_path().string(),
+            nix_reference,
+            destination.string());
+    }
+
     const std::string buildPhase = fmt::format(
         "NIXJA_SCAN_DEPS=$({} -C '{}' "
         "-i TODO -o {} -- {}); "
@@ -482,6 +506,7 @@ Result<void> process_dep_edge(
     const DerivationSpec spec {
         .name = derivationName,
         .storeNamePrefix = "nixja-gen",
+        .linkPhase = linkPhase,
         .buildPhase = buildPhase,
         .installPhase = "",
         .outputMethod = "text",
@@ -557,9 +582,9 @@ Result<void> topo_process(
         queue.pop();
 
         if (has_depfile(edge->EvaluateCommand()))
-            TRY(process_dep_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
+            TRY(process_dynamic_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
         else
-            TRY(process_standard_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
+            TRY(process_static_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
 
         for (const auto neighbor : consumers[edge->id_]) {
             indegree[neighbor->id_]--;
