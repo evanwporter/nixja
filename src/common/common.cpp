@@ -1,6 +1,5 @@
 #include "common.hpp"
 
-#include <algorithm>
 #include <filesystem>
 #include <stdexcept>
 
@@ -9,7 +8,6 @@
 #include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
 #include <nix/util/source-accessor.hh>
-#include <unordered_map>
 
 namespace fs = std::filesystem;
 
@@ -146,17 +144,6 @@ Result<fs::path> parse_which(
     }
 
     return path;
-}
-
-std::string join_command_arguments(const std::vector<std::string>& arguments) {
-    std::ostringstream result;
-    for (const auto& argument : arguments) {
-        if (result.tellp() > 0)
-            result << ' ';
-        result << argument;
-    }
-
-    return result.str();
 }
 
 std::string add_file_to_store_with_parents(
