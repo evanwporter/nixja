@@ -142,26 +142,6 @@ std::unordered_set<std::string> scan_dependencies(const std::string command) {
     return all_dependencies;
 }
 
-/// Outputs everything after the `--` in the command
-/// TODO: Combine more efficiently with other cmd line parsing
-std::string arguments_after_separator(int argc, char* argv[]) {
-    std::ostringstream result;
-    bool after_separator = false;
-
-    for (int i = 1; i < argc; ++i) {
-        if (!after_separator) {
-            after_separator = std::string_view(argv[i]) == "--";
-            continue;
-        }
-
-        if (result.tellp() > 0)
-            result << ' ';
-        result << argv[i];
-    }
-
-    return result.str();
-}
-
 int main(int argc, char* argv[]) {
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;

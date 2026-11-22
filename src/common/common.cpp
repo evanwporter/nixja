@@ -143,3 +143,21 @@ Result<fs::path> parse_which(
 
     return path;
 }
+
+std::string arguments_after_separator(int argc, char* argv[]) {
+    std::ostringstream result;
+    bool after_separator = false;
+
+    for (int i = 1; i < argc; ++i) {
+        if (!after_separator) {
+            after_separator = std::string_view(argv[i]) == "--";
+            continue;
+        }
+
+        if (result.tellp() > 0)
+            result << ' ';
+        result << argv[i];
+    }
+
+    return result.str();
+}

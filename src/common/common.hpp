@@ -13,7 +13,6 @@
 #include <nlohmann/json.hpp>
 
 using json = nlohmann::json;
-namespace fs = std::filesystem;
 
 // Move this Rustify stuff into a seperate github project
 template <typename T, typename E = std::string>
@@ -79,6 +78,14 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
     unwrap_result(result);                                    \
 })
 
+// Propagate an expected_fs result into a Result with a string error.
+#define TRY_EC(expr) ({                                                                     \
+    auto&& result = (expr);                                                                 \
+    if (!result)                                                                            \
+        return Err(fmt::format("{}:{}: {}", __FILE__, __LINE__, result.error().message())); \
+    unwrap_result(result);                                                                  \
+})
+
 /// Use only from an int-returning main function.
 #define MAIN_TRY(expr)                           \
     do {                                         \
@@ -113,6 +120,32 @@ struct DerivationSpec {
     json extraEnv;
 };
 
+struct StoreFile {
+    /// The path of the file in the nix store
+    std::filesystem::path source_store_path;
+
+    /// The path of the the file relative to the source root
+    std::filesystem::path file_relative;
+};
+
+struct TaskSpec {
+    std::vector<StoreFile> inputs;
+
+    std::vector<std::filesystem::path> outputs;
+
+    /// The source_root directory in the nix store.
+    std::optional<std::filesystem::path> source_store_path;
+
+    /// The build directory which command is run from
+    std::filesystem::path build_dir = ".";
+
+    /// The command to run
+    std::string command;
+};
+
+/// Render the Bash builder command for a TaskSpec.
+std::string make_task_command(const TaskSpec& spec);
+
 /// Build a derivation and write it to the nix store. The return is the path in the store.
 /// TODO: fold this into buildDerivation
 Result<nix::StorePath> writeDerivation(
@@ -127,6 +160,10 @@ std::string nixja_store_name(std::string_view name, std::string_view prefix);
 // Retrieved 2026-10-31, License - CC BY-SA 4.0
 std::string exec(const char* cmd);
 
-Result<fs::path> parse_which(
+Result<std::filesystem::path> parse_which(
     const std::string& cmd,
     const nix::ref<nix::Store>& store);
+
+/// Outputs everything after the `--` in the command
+/// TODO: Combine more efficiently with other cmd line parsing
+std::string arguments_after_separator(int argc, char* argv[]);

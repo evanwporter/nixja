@@ -26,10 +26,12 @@ find_package(argparse CONFIG REQUIRED)
 find_package(Clang CONFIG REQUIRED)
 
 add_subdirectory(external/ninja)
+add_subdirectory(external/expected-fs)
 
 add_subdirectory(src/common)
 add_subdirectory(src/nixja)
 add_subdirectory(src/nixja-scan-deps)
+add_subdirectory(src/nixja-task)
 
 function(add_nixja_hardlinks dir)
     foreach(target IN ITEMS nixja nixja-scan-deps)
