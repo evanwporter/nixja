@@ -18,6 +18,7 @@
 #include "nixja_gen.hpp"
 
 using json = nlohmann::json;
+namespace fs = std::filesystem;
 
 // TODO: This can be made simpler
 void run_command(const std::vector<std::string>& args) {

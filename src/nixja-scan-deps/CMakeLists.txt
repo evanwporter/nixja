@@ -8,6 +8,15 @@ target_link_libraries(nixja-scan-deps PRIVATE
     spdlog::spdlog
 )
 
+target_compile_definitions(nixja-scan-deps PRIVATE
+    NIXJA_TASK_PATH="${nixjaTask}"
+    NIX_STORE_PACKAGE_PATH="${NIX_STORE_PACKAGE_PATH}"
+    NIX_UTIL_PACKAGE_PATH="${NIX_UTIL_PACKAGE_PATH}"
+    FMT_PACKAGE_PATH="${FMT_PACKAGE_PATH}"
+    SPDLOG_PACKAGE_PATH="${SPDLOG_PACKAGE_PATH}"
+    CC_PACKAGE_PATH="${CC_PACKAGE_PATH}"
+)
+
 target_precompile_headers(nixja-scan-deps PRIVATE
     <nlohmann/json.hpp>
     <nix/main/shared.hh>
