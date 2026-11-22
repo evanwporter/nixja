@@ -100,7 +100,7 @@ Result<void> buildPhase(const std::vector<StoreFile>& inputs, const std::vector<
     return { };
 }
 
-Result<void> installPhase(const std::vector<StoreFile>& inputs, const std::vector<fs::path> outputs, const fs::path& nix_build_top, const fs::path& build_relative, const std::string& command) {
+Result<void> installPhase(const std::vector<fs::path> outputs) {
     const char* out_env = std::getenv("out");
     if (!out_env)
         return Err("[nixja-task] out is not set");
@@ -139,7 +139,7 @@ Result<void> nixja_task(
         TRY(linkSourceTree(*input_directory, nix_build_top));
     TRY(linkPhase(store_files, nix_build_top, build_relative));
     TRY(buildPhase(store_files, outputs, nix_build_top, build_relative, command));
-    TRY(installPhase(store_files, outputs, nix_build_top, build_relative, command));
+    TRY(installPhase(outputs));
 
     return { };
 }
