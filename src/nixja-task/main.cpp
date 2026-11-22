@@ -1,6 +1,5 @@
 #include <filesystem>
 #include <iostream>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -57,23 +56,6 @@ Result<void> linkPhase(const std::vector<StoreFile>& inputs, const fs::path& nix
     return { };
 }
 
-/// Creates a mirror of all the directories and symlinks the files.
-Result<void> linkSourceTree(
-    const fs::path& input_directory,
-    const fs::path& nix_build_top) {
-    TRY_EC(fs::create_directories(nix_build_top));
-    for (const auto& entry : fs::recursive_directory_iterator(input_directory)) {
-        const fs::path relative = entry.path().lexically_relative(input_directory);
-        const fs::path destination = nix_build_top / relative;
-        if (entry.is_directory())
-            TRY_EC(fs::create_directories(destination));
-        else
-            TRY_EC(fs::create_symlink(entry.path(), destination));
-    }
-
-    return { };
-}
-
 Result<void> buildPhase(const std::vector<StoreFile>& inputs, const std::vector<fs::path> outputs, const fs::path& nix_build_top, const fs::path& build_relative, const std::string& command) {
     // cd into the build directory
     TRY_EC(fs::current_path(nix_build_top / build_relative));
@@ -120,7 +102,6 @@ Result<void> installPhase(const std::vector<fs::path> outputs) {
 Result<void> nixja_task(
     const std::vector<std::string>& inputs,
     const std::vector<fs::path>& outputs,
-    const std::optional<fs::path>& input_directory,
     const fs::path& build_relative,
     const std::string& command) {
 
@@ -135,8 +116,6 @@ Result<void> nixja_task(
     for (const auto& input : inputs)
         store_files.push_back(TRY(parseStoreFile(input)));
 
-    if (input_directory)
-        TRY(linkSourceTree(*input_directory, nix_build_top));
     TRY(linkPhase(store_files, nix_build_top, build_relative));
     TRY(buildPhase(store_files, outputs, nix_build_top, build_relative, command));
     TRY(installPhase(outputs));
@@ -149,7 +128,6 @@ int main(int argc, char* argv[]) {
     /// Combine following block with nixja-scan-deps
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
-    std::optional<fs::path> input_directory;
 
     std::vector<std::string>* current_list = nullptr;
 
@@ -173,12 +151,6 @@ int main(int argc, char* argv[]) {
             current_list = &inputs;
         } else if (arg == "-o") {
             current_list = &outputs;
-        } else if (arg == "-d") {
-            if (i + 1 >= argc) {
-                std::cerr << "Missing value for -d\n";
-                return 1;
-            }
-            input_directory = argv[++i];
         } else if (arg == "-C") {
             if (i + 1 >= argc) {
                 std::cerr << "Missing value for -C\n";
@@ -207,7 +179,6 @@ int main(int argc, char* argv[]) {
     const auto result = nixja_task(
         inputs,
         output_paths,
-        input_directory,
         build_relative,
         command);
 
