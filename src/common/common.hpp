@@ -194,12 +194,16 @@ std::vector<StoreFile> add_dependencies_to_store(
             ? dependency_path.lexically_normal()
             : (dependency_root / dependency_path).lexically_normal();
 
+        const std::filesystem::path file_relative = absolute.lexically_relative(source_root);
+        if (file_relative.empty() || file_relative.is_absolute()
+            || (!file_relative.empty() && *file_relative.begin() == ".."))
+            continue;
+
         // Ninja's phony nodes (for example, `PHONY`) are graph markers, not
         // files that can be copied into the store.
         if (!std::filesystem::exists(absolute))
             continue;
 
-        const std::filesystem::path file_relative = absolute.lexically_relative(source_root);
         const std::filesystem::path file = std::filesystem::canonical(absolute);
 
         const auto stored = store->addToStore(

@@ -411,13 +411,24 @@ Result<void> process_static_edge(
 
     const auto buildPhase = make_task_command(task_spec, task_command);
 
+    json task_input_srcs = json::array({
+        fs::path(store->printStorePath(task_store_path)).filename().string(),
+    });
+    for (const auto& input : task_spec.inputs) {
+        if (!store->isInStore(input.source_store_path.string()))
+            continue;
+
+        const auto [store_path, _] = store->toStorePath(input.source_store_path.string());
+        task_input_srcs.push_back(fs::path(store->printStorePath(store_path)).filename().string());
+    }
+
     // Configure derivation.
     const DerivationSpec spec {
         .name = derivationName,
         .storeNamePrefix = "nixja-gen",
         .buildPhase = buildPhase,
         .outputMethod = "nar",
-        .inputSrcs = json::array({ fs::path(store->printStorePath(task_store_path)).filename().string() }),
+        .inputSrcs = std::move(task_input_srcs),
     };
 
     TRY(create_derivation(edge, spec, false, source_root, source_store_path, build_relative, store, edge_map));
