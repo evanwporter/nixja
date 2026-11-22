@@ -1,5 +1,6 @@
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -116,6 +117,7 @@ Result<void> installPhase(const std::vector<StoreFile>& inputs, const std::vecto
 Result<void> nixja_task(
     const std::vector<std::string>& inputs,
     const std::vector<fs::path>& outputs,
+    const std::optional<fs::path>& input_directory,
     const fs::path& build_relative,
     const std::string& command) {
 
@@ -130,6 +132,8 @@ Result<void> nixja_task(
     for (const auto& input : inputs)
         store_files.push_back(TRY(parseStoreFile(input)));
 
+    if (input_directory)
+        TRY(linkSourceTree(*input_directory, nix_build_top));
     TRY(linkPhase(store_files, nix_build_top, build_relative));
     TRY(buildPhase(store_files, outputs, nix_build_top, build_relative, command));
     TRY(installPhase(store_files, outputs, nix_build_top, build_relative, command));
@@ -142,6 +146,7 @@ int main(int argc, char* argv[]) {
     /// Combine following block with nixja-scan-deps
     std::vector<std::string> inputs;
     std::vector<std::string> outputs;
+    std::optional<fs::path> input_directory;
 
     std::vector<std::string>* current_list = nullptr;
 
@@ -165,6 +170,12 @@ int main(int argc, char* argv[]) {
             current_list = &inputs;
         } else if (arg == "-o") {
             current_list = &outputs;
+        } else if (arg == "-d") {
+            if (i + 1 >= argc) {
+                std::cerr << "Missing value for -d\n";
+                return 1;
+            }
+            input_directory = argv[++i];
         } else if (arg == "-C") {
             if (i + 1 >= argc) {
                 std::cerr << "Missing value for -C\n";
@@ -193,6 +204,7 @@ int main(int argc, char* argv[]) {
     const auto result = nixja_task(
         inputs,
         output_paths,
+        input_directory,
         build_relative,
         command);
 
