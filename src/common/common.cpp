@@ -27,6 +27,31 @@ std::string nixja_store_name(const std::string_view name, const std::string_view
     return prefix_with_separator + std::string(name);
 }
 
+std::string make_task_command(const fs::path& task_path, const TaskSpec& spec) {
+    std::string command = shell_quote(task_path.string());
+
+    if (spec.source_store_path)
+        command += fmt::format(" -d {}", shell_quote(spec.source_store_path->string()));
+
+    command += fmt::format(" -C {}", shell_quote(spec.build_dir.string()));
+
+    if (!spec.inputs.empty()) {
+        command += " -i";
+        for (const auto& input : spec.inputs)
+            command += fmt::format(
+                " {}",
+                shell_quote(fmt::format("{}:{}", input.source_store_path.string(), input.file_relative.generic_string())));
+    }
+
+    if (!spec.outputs.empty()) {
+        command += " -o";
+        for (const auto& output : spec.outputs)
+            command += fmt::format(" {}", shell_quote(output.generic_string()));
+    }
+
+    return command + fmt::format(" -- {}", shell_quote(spec.command));
+}
+
 /// TODO: think about moving this out of the header file
 Result<nix::Derivation> buildDerivation(
     const nix::ref<nix::Store>& store,

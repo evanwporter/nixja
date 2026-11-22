@@ -247,16 +247,19 @@ int main(int argc, char* argv[]) {
         task_store_name = task_path.filename().string();
     }
 
-    std::string buildCommand = fmt::format(
-        "{} -C {} -i",
-        shell_quote(task_path.string()),
-        shell_quote(build_relative.generic_string()));
+    TaskSpec task_spec {
+        .build_dir = build_relative,
+        .command = command,
+    };
     for (const auto& [file_relative, store_path] : store_paths)
-        buildCommand += fmt::format(" {}", shell_quote(fmt::format("{}:{}", store_path, file_relative.generic_string())));
-    buildCommand += " -o";
+        task_spec.inputs.push_back({
+            .source_store_path = store_path,
+            .file_relative = file_relative,
+        });
     for (const auto& output : outputs)
-        buildCommand += fmt::format(" {}", shell_quote(output));
-    buildCommand += fmt::format(" -- {}", shell_quote(command));
+        task_spec.outputs.emplace_back(output);
+
+    const std::string buildCommand = make_task_command(task_path, task_spec);
 
     /// Add each storePath as a inputSrc
     std::vector<std::string> inputSrcs;

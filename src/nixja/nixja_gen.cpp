@@ -319,7 +319,7 @@ Result<void> create_derivation(
 
     auto completeSpec = spec;
     if (!generates_drv) {
-        std::vector<std::pair<fs::path, std::string>> task_inputs;
+        std::vector<StoreFile> task_inputs;
         for (const Node* input : edge->inputs_) {
             const fs::path path = input->path();
             if (path.is_absolute())
@@ -327,9 +327,10 @@ Result<void> create_derivation(
 
             const fs::path destination = (build_relative / path).lexically_normal();
             if (const Edge* producer = input->in_edge()) {
-                task_inputs.emplace_back(
-                    destination,
-                    edge_map[producer->id_].output_path + "/" + path.generic_string());
+                task_inputs.push_back({
+                    .source_store_path = edge_map[producer->id_].output_path + "/" + path.generic_string(),
+                    .file_relative = destination,
+                });
                 continue;
             }
 
@@ -339,7 +340,10 @@ Result<void> create_derivation(
                 nix::makeFSSourceAccessor(source_file),
                 nix::ContentAddressMethod::Raw::Flat);
             const std::string store_path = store->printStorePath(stored_file);
-            task_inputs.emplace_back(destination, store_path);
+            task_inputs.push_back({
+                .source_store_path = store_path,
+                .file_relative = destination,
+            });
             inputSrcs.push_back(fs::path(store_path).filename().string());
         }
 
@@ -366,18 +370,17 @@ Result<void> create_derivation(
             task_store_name = task_path.filename().string();
         }
 
-        completeSpec.buildCommand = fmt::format(
-            "{} -C {} -i",
-            shell_quote(task_path.string()),
-            shell_quote(build_relative.generic_string()));
-        for (const auto& [destination, store_path] : task_inputs)
-            completeSpec.buildCommand += fmt::format(
-                " {}",
-                shell_quote(fmt::format("{}:{}", store_path, destination.generic_string())));
-        completeSpec.buildCommand += " -o";
-        for (const auto& output : edge->outputs_)
-            completeSpec.buildCommand += fmt::format(" {}", shell_quote(output->path()));
-        completeSpec.buildCommand += fmt::format(" -- {}", shell_quote(command.command));
+        completeSpec.buildCommand = make_task_command(task_path, {
+                                                                  .inputs = task_inputs,
+                                                                  .outputs = [&] {
+                                                                      std::vector<fs::path> outputs;
+                                                                      for (const auto& output : edge->outputs_)
+                                                                          outputs.push_back(output->path());
+                                                                      return outputs;
+                                                                  }(),
+                                                                  .build_dir = build_relative,
+                                                                  .command = command.command,
+                                                              });
 
         inputSrcs.push_back(task_store_name);
         if (!task_is_store_path) {
@@ -538,7 +541,7 @@ Result<void> process_dynamic_edge(
     for (const auto& output : edge->outputs_)
         outputs_str += output->path();
 
-    std::string task_inputs;
+    std::vector<StoreFile> task_inputs;
     for (const Node* input : edge->inputs_) {
         const fs::path path = input->path();
         if (path.is_absolute())
@@ -546,25 +549,32 @@ Result<void> process_dynamic_edge(
 
         if (const Edge* producer = input->in_edge()) {
             const fs::path destination = (build_relative / path).lexically_normal();
-            const std::string source = edge_map[producer->id_].output_path + "/" + path.generic_string();
-            task_inputs += fmt::format(
-                " {}",
-                shell_quote(fmt::format("{}:{}", source, destination.generic_string())));
+            task_inputs.push_back({
+                .source_store_path = edge_map[producer->id_].output_path + "/" + path.generic_string(),
+                .file_relative = destination,
+            });
         }
     }
 
-    const std::string buildCommand = fmt::format(
-        "export NIXJA_TASK_PATH={}; NIXJA_SCAN_DEPS=$({} -d {} -C . -i{} -- {} -C {} "
-        "-i TODO -o {} -- {}); "
-        "rmdir \"$out\"; cp \"$NIXJA_SCAN_DEPS\" \"$out\"",
+    const std::string scanner_command = fmt::format(
+        "export NIXJA_TASK_PATH={}; {} -C {} -i TODO -o {} -- {}",
         shell_quote(task_path.string()),
-        shell_quote(task_path.string()),
-        shell_quote(source_store_path),
-        task_inputs,
         shell_quote(scanner_path.string()),
         shell_quote(build_relative.generic_string()),
         outputs_str,
         shell_quote(command));
+
+    const std::string task_command = make_task_command(task_path, {
+                                                                    .inputs = task_inputs,
+                                                                    .source_store_path = source_store_path,
+                                                                    .build_dir = ".",
+                                                                    .command = scanner_command,
+                                                                });
+
+    const std::string buildCommand = fmt::format(
+        "NIXJA_SCAN_DEPS=$({}); "
+        "rmdir \"$out\"; cp \"$NIXJA_SCAN_DEPS\" \"$out\"",
+        task_command);
 
     // Configure derivation.
     const DerivationSpec spec {

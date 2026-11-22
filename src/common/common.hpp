@@ -121,6 +121,34 @@ struct DerivationSpec {
     json extraEnv;
 };
 
+struct StoreFile {
+    /// The path of the file in the nix store
+    std::filesystem::path source_store_path;
+
+    /// The path of the the file relative to the source root
+    std::filesystem::path file_relative;
+};
+
+struct TaskSpec {
+    std::vector<StoreFile> inputs;
+
+    std::vector<std::filesystem::path> outputs;
+
+    /// The source_root directory in the nix store.
+    std::optional<std::filesystem::path> source_store_path;
+
+    /// The build directory which command is run from
+    std::filesystem::path build_dir = ".";
+
+    /// The command to run
+    std::string command;
+};
+
+/// Render a TaskSpec as a shell command accepted by nixja-task.
+std::string make_task_command(
+    const std::filesystem::path& task_path,
+    const TaskSpec& spec);
+
 /// Build a derivation and write it to the nix store. The return is the path in the store.
 /// TODO: fold this into buildDerivation
 Result<nix::StorePath> writeDerivation(
@@ -161,11 +189,3 @@ std::string add_file_to_store_with_parents(
 std::string join_command_arguments(const std::vector<std::string>& arguments);
 
 std::string arguments_after_separator(int argc, char* argv[]);
-
-struct StoreFile {
-    /// The path of the file in the nix store
-    std::filesystem::path source_store_path;
-
-    /// The path of the the file relative to the source root
-    std::filesystem::path file_relative;
-};
