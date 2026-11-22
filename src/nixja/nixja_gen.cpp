@@ -292,8 +292,8 @@ Result<void> create_derivation(
     if (generates_drv)
         inputSrcs.push_back(fs::path(source_store_path).filename().string());
 
-    if (nixja_scan_deps_path.is_absolute())
-        inputSrcs.push_back(nixja_scan_deps_path.parent_path().parent_path().filename().string());
+    const auto [scanner_store_path, scanner_sub_path] = store->toStorePath(nixja_scan_deps_path.string());
+    inputSrcs.push_back(fs::path(store->printStorePath(scanner_store_path)).filename().string());
     inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
