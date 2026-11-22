@@ -394,6 +394,7 @@ Result<void> process_static_edge(
                                 edge->EvaluateCommand(), source_root, source_store_path, store))
                             .command;
 
+    /// Obtain working NIXJA_TASK_PATH
     const fs::path configured_task_path = NIXJA_TASK_PATH;
     const fs::path task_path = configured_task_path.is_absolute()
         ? configured_task_path
@@ -407,6 +408,7 @@ Result<void> process_static_edge(
               nix::ContentAddressMethod::Raw::NixArchive)));
 
     const auto [task_store_path, _] = store->toStorePath(task_command.string());
+
     const auto buildPhase = make_task_command(task_spec, task_command);
 
     // Configure derivation.
