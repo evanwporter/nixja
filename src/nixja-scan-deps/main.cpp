@@ -26,14 +26,6 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-std::string shell_quote(const std::string& value) {
-    std::string quoted = "'";
-    for (const char ch : value)
-        quoted += ch == '\'' ? "'\\''" : std::string(1, ch);
-    quoted += '\'';
-    return quoted;
-}
-
 /// Parse Makefile dependency output from clang-scan-deps
 /// TODO: Use whatever ninja uses internally
 std::unordered_map<std::string, std::unordered_set<std::string>>

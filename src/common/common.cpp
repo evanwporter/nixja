@@ -11,6 +11,14 @@
 
 namespace fs = std::filesystem;
 
+std::string shell_quote(const std::string_view value) {
+    std::string quoted = "'";
+    for (const char ch : value)
+        quoted += ch == '\'' ? "'\\''" : std::string(1, ch);
+    quoted += '\'';
+    return quoted;
+}
+
 std::string nixja_store_name(const std::string_view name, const std::string_view prefix) {
     const std::string prefix_with_separator = std::string(prefix) + "-";
     if (name.starts_with(prefix_with_separator))

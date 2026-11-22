@@ -16,6 +16,8 @@
 using json = nlohmann::json;
 // namespace fs = std::filesystem;
 
+std::string shell_quote(std::string_view value);
+
 // Move this Rustify stuff into a seperate github project
 template <typename T, typename E = std::string>
 using Result = std::expected<T, E>;

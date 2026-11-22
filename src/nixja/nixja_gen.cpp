@@ -31,14 +31,6 @@ namespace fs = std::filesystem;
 
 using json = nlohmann::json;
 
-std::string shell_quote(const std::string& value) {
-    std::string quoted = "'";
-    for (const char ch : value)
-        quoted += ch == '\'' ? "'\\''" : std::string(1, ch);
-    quoted += '\'';
-    return quoted;
-}
-
 // TODO: Clarify how each field is used
 // TODO: Check if I need the full thing
 struct Derivation {
