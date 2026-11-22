@@ -141,6 +141,7 @@
 
 					cmakeFlags = [
 						"-DnixjaScanDeps=${final.nixja-scan-deps}/bin/nixja-scan-deps"
+						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
 					];
 
 					installPhase = ''
