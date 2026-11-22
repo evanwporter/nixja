@@ -375,7 +375,6 @@ Result<void> process_static_edge(
         '_');
 
     TaskSpec task_spec;
-
     task_spec.inputs = add_dependencies_to_store(
         edge->inputs_, store, source_root, source_root / build_relative);
     for (const Node* input : edge->inputs_) {
@@ -406,20 +405,22 @@ Result<void> process_static_edge(
               nixja_store_name("nixja-task", "nixja-gen"),
               nix::makeFSSourceAccessor(canonical_task_path),
               nix::ContentAddressMethod::Raw::NixArchive)));
-
     const auto [task_store_path, _] = store->toStorePath(task_command.string());
 
     const auto buildPhase = make_task_command(task_spec, task_command);
 
-    json task_input_srcs = json::array({
+    json inputSrcs = json::array({
         fs::path(store->printStorePath(task_store_path)).filename().string(),
     });
     for (const auto& input : task_spec.inputs) {
         if (!store->isInStore(input.source_store_path.string()))
             continue;
 
+        // Check if we can skip converting to StorePath
         const auto [store_path, _] = store->toStorePath(input.source_store_path.string());
-        task_input_srcs.push_back(fs::path(store->printStorePath(store_path)).filename().string());
+
+        // Every path needs to be added to input srcs
+        inputSrcs.push_back(fs::path(store->printStorePath(store_path)).filename().string());
     }
 
     // Configure derivation.
@@ -428,7 +429,7 @@ Result<void> process_static_edge(
         .storeNamePrefix = "nixja-gen",
         .buildPhase = buildPhase,
         .outputMethod = "nar",
-        .inputSrcs = std::move(task_input_srcs),
+        .inputSrcs = std::move(inputSrcs),
     };
 
     TRY(create_derivation(edge, spec, false, source_root, source_store_path, build_relative, store, edge_map));
