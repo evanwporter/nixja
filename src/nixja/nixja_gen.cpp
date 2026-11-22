@@ -505,7 +505,7 @@ Result<void> process_dynamic_edge(
     for (const Node* input : edge->inputs_) {
         const fs::path path = input->path();
 
-        /// Checking if the path is absolute filters out /nix/store paths
+        // Checking if the path is absolute filters out /nix/store paths
         if (path.is_absolute())
             continue;
 
