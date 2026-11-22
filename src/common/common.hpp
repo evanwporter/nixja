@@ -75,19 +75,19 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
 // a Result or return its error
 // Equivalent to `?` in RUST
 // https://www.reddit.com/r/cpp/comments/e1pdds/simplifying_stdexpected_error_handling_with_an/
-#define TRY(expr) ({                                                          \
-    auto&& result = (expr);                                                   \
-    if (!result)                                                              \
+#define TRY(expr) ({                                                              \
+    auto&& result = (expr);                                                       \
+    if (!result)                                                                  \
         return Err(fmt::format("{}:{}: {}", __FILE__, __LINE__, result.error())); \
-    unwrap_result(result);                                                    \
+    unwrap_result(result);                                                        \
 })
 
 // Propagate an expected_fs result into a Result with a string error.
-#define TRY_EC(expr) ({                                                                 \
-    auto&& result = (expr);                                                          \
-    if (!result)                                                                     \
+#define TRY_EC(expr) ({                                                                     \
+    auto&& result = (expr);                                                                 \
+    if (!result)                                                                            \
         return Err(fmt::format("{}:{}: {}", __FILE__, __LINE__, result.error().message())); \
-    unwrap_result(result);                                                           \
+    unwrap_result(result);                                                                  \
 })
 
 /// Use only from an int-returning main function.
@@ -117,8 +117,8 @@ struct DerivationSpec {
     /// `nar` or `text`
     std::string outputMethod;
 
-    json inputSrcs;
-    json inputDrvs;
+    json inputSrcs = json::array();
+    json inputDrvs = json::object();
 
     /// TODO: Currently this is unused
     json extraEnv;
