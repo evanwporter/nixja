@@ -6,7 +6,6 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <unordered_set>
 #include <utility>
 
 #include <fmt/format.h>
@@ -72,11 +71,11 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
 // a Result or return its error
 // Equivalent to `?` in RUST
 // https://www.reddit.com/r/cpp/comments/e1pdds/simplifying_stdexpected_error_handling_with_an/
-#define TRY(expr) ({                                          \
-    auto&& result = (expr);                                   \
-    if (!result)                                              \
-        return std::unexpected { std::move(result.error()) }; \
-    unwrap_result(result);                                    \
+#define TRY(expr) ({                                                              \
+    auto&& result = (expr);                                                       \
+    if (!result)                                                                  \
+        return Err(fmt::format("{}:{}: {}", __FILE__, __LINE__, result.error())); \
+    unwrap_result(result);                                                        \
 })
 
 // Propagate an expected_fs result into a Result with a string error.

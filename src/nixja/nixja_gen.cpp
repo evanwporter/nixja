@@ -109,6 +109,10 @@ std::unordered_set<std::string> parseCompileCommand(const std::string& command) 
 }
 
 /// Given a generic NINJA command, we parse all the possible NIX STORE paths from it
+/// We also rework the program (the first arg in the command), so that it complies.
+///
+/// For example if the program is an absolute path under source_root, then we add the path
+/// to the store and replace the program with the path from the store.
 /// TODO: Parse the complex shell syntax like program1 && program2
 /// TODO: Rework to flow better & DRY
 Result<Command> parseCommand(
@@ -355,6 +359,7 @@ Result<void> create_derivation(
     return { };
 };
 
+/// A static edge is one where all dependencies are known prior to build time
 Result<void> process_static_edge(
     const Edge* edge,
     const fs::path& source_root,
@@ -433,7 +438,7 @@ Result<void> process_static_edge(
         if (!store->isInStore(input.source_store_path.string()))
             continue;
 
-        // Check if we can skip converting to StorePath
+        // TODO: Check if we can skip converting to StorePath
         const auto [store_path, _] = store->toStorePath(input.source_store_path.string());
 
         // Every path needs to be added to input srcs
@@ -454,6 +459,8 @@ Result<void> process_static_edge(
     return { };
 }
 
+/// A dynamic edge is one where not all dependencies are known at build time. They
+/// must be discovered.
 Result<void> process_dynamic_edge(
     const Edge* edge,
     const fs::path& source_root,
@@ -494,10 +501,6 @@ Result<void> process_dynamic_edge(
         /// to the immutable source-store file.
         "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
         source_store_path);
-
-    // /// `collector` obtains the entire closure of nodes
-    // InputsCollector collector;
-    // collector.VisitNode(edge->outputs_.front());
 
     for (const Node* input : edge->inputs_) {
         const fs::path path = input->path();
