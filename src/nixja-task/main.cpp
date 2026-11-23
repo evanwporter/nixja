@@ -10,6 +10,7 @@
 #include <expected_fs/expected_fs.hpp>
 
 #include "common.hpp"
+#include "elf.hpp"
 
 namespace fs = expected_fs;
 
@@ -82,6 +83,56 @@ Result<void> buildPhase(const std::vector<StoreFile>& inputs, const std::vector<
     return { };
 }
 
+Result<void> fixupPhase(
+    const std::vector<StoreFile>& inputs,
+    const std::vector<fs::path>& outputs) {
+    std::set<fs::path> directories;
+
+    for (const auto& input : inputs) {
+        if (is_patchelf_compatible(input.source_store_path))
+            directories.insert(input.source_store_path.parent_path());
+    }
+
+    std::string rpath;
+
+    for (const auto& directory : directories) {
+        if (!rpath.empty())
+            rpath += ":";
+
+        rpath += directory.string();
+    }
+
+    for (const auto& output : outputs) {
+        // Relocatable object files are ELF too, but patchelf cannot patch
+        // them. Only linked executables and shared objects have an rpath.
+        if (!is_patchelf_compatible(output))
+            continue;
+
+        const pid_t child = fork();
+
+        if (child == -1)
+            return Err("Failed to fork patchelf");
+
+        if (child == 0) {
+            execlp(
+                "patchelf",
+                "patchelf",
+                "--set-rpath",
+                rpath.c_str(),
+                output.c_str(),
+                nullptr);
+            _exit(127);
+        }
+
+        int status = 0;
+
+        if (waitpid(child, &status, 0) == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+            return Err("Failed to patch ELF: {}", output.string());
+    }
+
+    return { };
+}
+
 Result<void> installPhase(const std::vector<fs::path> outputs) {
     const char* out_env = std::getenv("out");
     if (!out_env)
@@ -118,6 +169,7 @@ Result<void> nixja_task(
 
     TRY(linkPhase(store_files, nix_build_top, build_relative));
     TRY(buildPhase(store_files, outputs, nix_build_top, build_relative, command));
+    TRY(fixupPhase(store_files, outputs));
     TRY(installPhase(outputs));
 
     return { };

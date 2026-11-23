@@ -297,8 +297,13 @@ Result<void> create_derivation(
     // Collect input derivations.
     json inputDrvs = json::object();
 
+    // Meson lists libraries behind order-only .symbols dependencies, so they are not direct inputs
+    // but they still need to be tracked and parsed so nixja-task can find them.
+    InputsCollector collector;
+    collector.VisitNode(edge->outputs_.front());
+
     /// TODO: Can we combine this loop with the one above
-    for (const auto node : edge->inputs_) {
+    for (const Node* node : collector.inputs()) {
         if (const Edge* producer = node->in_edge()) {
 
             const auto& derivation = edge_map[producer->id_];
@@ -384,10 +389,13 @@ Result<void> process_static_edge(
     /// Tracks source files (ie: files that already exist and don't need to be created by
     /// a ninja edge). These files are then added to the store and then inputSrcs. They are
     /// also passed along as inputs to `nixja-task`.
-    std::vector<const Node*> source_inputs;
-    source_inputs.reserve(edge->inputs_.size());
+    InputsCollector collector;
+    collector.VisitNode(edge->outputs_.front());
 
-    for (const Node* input : edge->inputs_) {
+    std::vector<const Node*> source_inputs;
+    source_inputs.reserve(collector.inputs().size());
+
+    for (const Node* input : collector.inputs()) {
         const Edge* producer = input->in_edge();
 
         // If this file has no producer then its a source file and
