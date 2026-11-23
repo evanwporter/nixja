@@ -93,6 +93,22 @@ Result<void> fixupPhase(
             directories.insert(input.source_store_path.parent_path());
     }
 
+    // The compiler runtime is available through the derivation's compiler
+    // input, but it is not an edge input. Ask the configured C++ compiler for
+    // the exact runtime libraries and add their directories to the output
+    // RPATH.
+    for (const char* library : { "libstdc++.so.6", "libgcc_s.so.1" }) {
+        std::string path = exec(fmt::format("c++ -print-file-name={}", library).c_str());
+        const auto end = path.find_last_not_of(" \t\r\n");
+        if (end == std::string::npos)
+            continue;
+        path.erase(end + 1);
+
+        const fs::path runtime_library(path);
+        if (runtime_library.is_absolute() && fs::exists(runtime_library))
+            directories.insert(runtime_library.parent_path());
+    }
+
     std::string rpath;
 
     for (const auto& directory : directories) {
