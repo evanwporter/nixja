@@ -7,14 +7,17 @@
 #include <argparse/argparse.hpp>
 #include <fmt/format.h>
 #include <fmt/ranges.h>
+
 #include <nix/store/store-api.hh>
 #include <nix/util/source-accessor.hh>
+
 #include <nlohmann/json.hpp>
 
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include "common.hpp"
+#include "logging.hpp"
 #include "nixja_gen.hpp"
 
 using json = nlohmann::json;
@@ -53,6 +56,8 @@ void run_command(const std::vector<std::string>& args) {
 // TODO: Test if I can run this in a standard nix derivation as if it was ninja or something
 // TODO: Add the -C arg like ninja -C build
 int main(int argc, char* argv[]) {
+    init_logging("nixja", spdlog::level::debug);
+
     // TODO: To replicate NINJA we should copy the cmd line format from libninja
     argparse::ArgumentParser program("nixja", NIXJA_VERSION);
     program.add_description(

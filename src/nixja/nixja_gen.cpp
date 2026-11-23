@@ -631,7 +631,21 @@ Result<void> topo_process(
         const auto edge = queue.front();
         queue.pop();
 
-        if (has_depfile(edge->EvaluateCommand()))
+        const bool dynamic = has_depfile(edge->EvaluateCommand());
+
+        std::vector<std::string_view> outputs;
+        outputs.reserve(edge->outputs_.size());
+
+        for (const Node* output : edge->outputs_)
+            outputs.emplace_back(output->path());
+
+        spdlog::debug(
+            "Processing {} edge {}: {}",
+            dynamic ? "dynamic" : "static",
+            edge->id_,
+            fmt::join(outputs, ", "));
+
+        if (dynamic)
             TRY(process_dynamic_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
         else
             TRY(process_static_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
@@ -656,6 +670,8 @@ Result<void> topo_process(
  * @return The Nix store path of the generated derivation
  */
 Result<std::string> nixja_gen(const std::string& target, const fs::path& source_root, const fs::path& build_dir) {
+
+    spdlog::info("[nixja-gen] Generating derivation for target '{}'", target);
     // Load Ninja build graph.
     const fs::path ninja_file = build_dir / "build.ninja";
 
@@ -667,6 +683,8 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
 
     if (!parser.Load(ninja_file.string(), &error))
         return Err(error);
+
+    spdlog::debug("Loaded Ninja manifest with {} edges", state.edges_.size());
 
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
@@ -731,5 +749,8 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
                                                           .inputSrcs = json::array(),
                                                           .inputDrvs = finalInputDrvs,
                                                       }));
+
+    spdlog::info("Generated derivation: {}", store->printStorePath(final_drv));
+
     return store->printStorePath(final_drv);
 }
