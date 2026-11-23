@@ -33,6 +33,7 @@
 				coreutils
 				findutils
 				which
+				patchelf
 				stdenv.cc
 				clang-tools
 			];

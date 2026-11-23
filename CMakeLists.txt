@@ -27,6 +27,7 @@ find_package(Clang CONFIG REQUIRED)
 
 add_subdirectory(external/ninja)
 add_subdirectory(external/expected-fs)
+add_subdirectory(external/libpatchelf)
 
 add_subdirectory(src/common)
 add_subdirectory(src/nixja)
