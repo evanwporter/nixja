@@ -61,7 +61,7 @@
 
 29. Add clean option / python script to clean up (related goal #5)
 
-30. Make sure we are only compiling stuff in the `target` closure
+30. ~~Make sure we are only compiling stuff in the `target` closure~~
 
 31. ~~Im pretty sure nixja-gen and nixja can be combine. I just need to think about what would be lost by doing that.~~
 

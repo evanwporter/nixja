@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fmt/ranges.h>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -12,9 +13,17 @@
 #include <unistd.h>
 
 #include <fmt/format.h>
+#include <nlohmann/json.hpp>
+
 #include <nix/store/store-api.hh>
 #include <nix/util/source-accessor.hh>
-#include <nlohmann/json.hpp>
+
+// macro conflict between spdlog and nix
+#ifdef debug
+#undef debug
+#endif
+
+#include <spdlog/spdlog.h>
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/CommandLine.h>
@@ -201,7 +210,8 @@ Result<Command> parseCommand(
     return result;
 }
 
-/// Determine whether a command uses a depfile
+/// Determine whether a command uses a depfile. This is used for the purpose of determining
+/// whether a edge is static or dynamic.
 /// TODO: Use ninja internals to figure this out
 bool has_depfile(const std::string& command) {
     std::istringstream stream(command);
@@ -571,6 +581,7 @@ Result<void> process_dynamic_edge(
 /// See LC Course Scheduling
 /// TODO: only process target closure
 Result<void> topo_process(
+    const std::string& target,
     const State& state,
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map,
@@ -587,10 +598,28 @@ Result<void> topo_process(
     /// A edge in this queue means that all of its dependencies have been processed
     std::queue<const Edge*> queue;
 
-    // Form the adjaceny list
-    for (size_t i = 0; i < state.edges_.size(); i++) {
-        const auto edge = state.edges_[i];
+    const Node* target_node = state.LookupNode(target);
+    if (target_node == nullptr)
+        return Err("Unknown Ninja target '{}'", target);
 
+    // Obtains the entire closure for target node
+    InputsCollector collector;
+    collector.VisitNode(target_node);
+
+    /// Every edge that produces a node needed by target_node either directly or indirectly
+    std::unordered_set<const Edge*> closure;
+
+    // Include the target's own producing edge.
+    if (const auto edge = target_node->in_edge())
+        closure.insert(edge);
+
+    // Add all edges that produce a dependency (direct or indirect)
+    for (const auto node : collector.inputs())
+        if (const Edge* edge = node->in_edge())
+            closure.insert(edge);
+
+    // Form the adjaceny list
+    for (const auto edge : closure) {
         std::unordered_set<size_t> producers;
 
         for (const auto node : edge->inputs_) {
@@ -603,19 +632,15 @@ Result<void> topo_process(
                 producers.insert(producer->id_);
         }
 
-        indegree[i] = producers.size();
+        indegree[edge->id_] = producers.size();
 
-        for (const auto producerId : producers) {
+        for (const auto producerId : producers)
             consumers[producerId].push_back(edge);
-        }
     }
 
-    for (size_t i = 0; i < state.edges_.size(); i++) {
-        const auto edge = state.edges_[i];
-        if (indegree[i] == 0) {
+    for (const Edge* edge : closure)
+        if (indegree[edge->id_] == 0)
             queue.push(edge);
-        }
-    }
 
     /// TODO: Move this out of this function
 
@@ -692,7 +717,13 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
     const nix::ref<nix::Store> store = nix::openStore();
 
     std::vector<Derivation> edge_map(state.edges_.size());
-    TRY(topo_process(state, store, edge_map, source_root, build_dir.lexically_relative(source_root)));
+    TRY(topo_process(
+        target,
+        state,
+        store,
+        edge_map,
+        source_root,
+        build_dir.lexically_relative(source_root)));
 
     const Node* node = state.LookupNode(target);
 
