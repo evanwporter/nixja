@@ -577,6 +577,31 @@ Result<void> process_dynamic_edge(
     return { };
 }
 
+Result<void> process_dynamic_edges(
+    const std::vector<const Edge*>& edges,
+    const fs::path& source_root,
+    const std::string& source_store_path,
+    const fs::path& build_relative,
+    const nix::ref<nix::Store> store,
+    std::vector<Derivation>& edge_map) {
+
+    spdlog::debug(
+        "Processing batch of {} dynamic edges",
+        edges.size());
+
+    for (const auto edge : edges) {
+        TRY(process_dynamic_edge(
+            edge,
+            source_root,
+            source_store_path,
+            build_relative,
+            store,
+            edge_map));
+    }
+
+    return { };
+}
+
 /// Kahns Algorithm
 /// See LC Course Scheduling
 /// TODO: only process target closure
@@ -652,48 +677,91 @@ Result<void> topo_process(
 
     const std::string source_store_path = store->printStorePath(stored);
 
-    while (!queue.empty()) {
-        const auto edge = queue.front();
-        queue.pop();
-
-        const bool dynamic = has_depfile(edge->EvaluateCommand());
-
-        std::vector<std::string_view> outputs;
-        outputs.reserve(edge->outputs_.size());
-
-        for (const Node* output : edge->outputs_)
-            outputs.emplace_back(output->path());
-
-        spdlog::debug(
-            "Processing {} edge {}: {}",
-            dynamic ? "dynamic" : "static",
-            edge->id_,
-            fmt::join(outputs, ", "));
-
-        if (dynamic)
-            TRY(process_dynamic_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
-        else
-            TRY(process_static_edge(edge, source_root, source_store_path, build_relative, store, edge_map));
-
+    const auto mark_processed = [&](const Edge* edge) {
         for (const auto neighbor : consumers[edge->id_]) {
-            indegree[neighbor->id_]--;
-
-            if (indegree[neighbor->id_] == 0)
+            if (--indegree[neighbor->id_] == 0)
                 queue.push(neighbor);
         }
+    };
+
+    //           S1
+    //          /  \
+    //         v    v
+    //        S2    D1 ──┐
+    //         |     |   │  Batch 1
+    //         v     |   │
+    //        D2 ────|───┘
+    //         \    /
+    //          v  v
+    //           D3 ─────── Batch 2
+    //           |
+    //           v
+    //         Done
+    //
+    // S = Static edge
+    // D = Dynamic edge
+
+    while (!queue.empty()) {
+        std::vector<const Edge*> dynamic_edges;
+
+        // Process static edges until no more can be processed.
+        // Defer dynamic edges for batch processing.
+        while (!queue.empty()) {
+            const auto edge = queue.front();
+            queue.pop();
+
+            const bool dynamic = has_depfile(edge->EvaluateCommand());
+
+            {
+                std::vector<std::string_view> outputs;
+                outputs.reserve(edge->outputs_.size());
+                for (const Node* output : edge->outputs_)
+                    outputs.emplace_back(output->path());
+
+                spdlog::debug(
+                    "{} edge {}: {}",
+                    dynamic ? "Deferring dynamic" : "Processing static",
+                    edge->id_,
+                    fmt::join(outputs, ", "));
+            }
+
+            // Defer processing of dynamic edges
+            if (dynamic) {
+                dynamic_edges.push_back(edge);
+                continue;
+            }
+
+            TRY(process_static_edge(
+                edge,
+                source_root,
+                source_store_path,
+                build_relative,
+                store,
+                edge_map));
+
+            mark_processed(edge);
+        }
+
+        if (dynamic_edges.empty())
+            break;
+
+        // Process every currently available dynamic edge as a batch.
+        TRY(process_dynamic_edges(
+            dynamic_edges,
+            source_root,
+            source_store_path,
+            build_relative,
+            store,
+            edge_map));
+
+        // Release consumers only after the entire batch is processed.
+        for (const auto edge : dynamic_edges)
+            mark_processed(edge);
     }
 
     return { };
 }
 
-/**
- * @brief Generates a Nix derivation for a target in a Ninja build graph.
- *
- * @param target The Ninja build target to generate a derivation for.
- * @param source_root The directory where `nixja` is called from.
- * @param build_dir The directory containing the build.ninja file.
- * @return The Nix store path of the generated derivation
- */
 Result<std::string> nixja_gen(const std::string& target, const fs::path& source_root, const fs::path& build_dir) {
 
     spdlog::info("[nixja-gen] Generating derivation for target '{}'", target);
