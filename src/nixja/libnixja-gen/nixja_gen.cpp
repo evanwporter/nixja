@@ -25,6 +25,13 @@
 
 #include <spdlog/spdlog.h>
 
+#include <clang/Basic/Diagnostic.h>
+#include <clang/Basic/DiagnosticOptions.h>
+#include <clang/Driver/Action.h>
+#include <clang/Driver/Compilation.h>
+#include <clang/Driver/Driver.h>
+#include <clang/Tooling/Tooling.h>
+
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/CommandLine.h>
 
@@ -115,6 +122,15 @@ std::unordered_set<std::string> parseCompileCommand(const std::string& command) 
     }
 
     return paths;
+}
+
+bool is_compile_command(clang::driver::Driver& driver, llvm::ArrayRef<const char*> args) {
+    driver.setCheckInputsExist(false);
+
+    std::unique_ptr<clang::driver::Compilation> C(
+        driver.BuildCompilation(args));
+
+    return C && !C->containsError() && clang::tooling::getCC1Arguments(&driver.getDiags(), C.get());
 }
 
 /// Given a generic NINJA command, we parse all the possible NIX STORE paths from it

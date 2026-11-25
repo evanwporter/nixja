@@ -34,6 +34,9 @@ add_subdirectory(src/nixja)
 add_subdirectory(src/nixja-scan-deps)
 add_subdirectory(src/nixja-task)
 
+enable_testing()
+add_subdirectory(tests)
+
 function(add_nixja_hardlinks dir)
     foreach(target IN ITEMS nixja nixja-scan-deps nixja-task)
         list(APPEND HARDLINK_COMMANDS

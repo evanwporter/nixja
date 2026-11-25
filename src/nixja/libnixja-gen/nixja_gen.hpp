@@ -1,9 +1,14 @@
 #include <filesystem>
 #include <string>
 
+#include <clang/Driver/Driver.h>
+#include <llvm/ADT/SmallVector.h>
+
 #include "common.hpp"
 
 namespace fs = std::filesystem;
+
+bool is_compile_command(clang::driver::Driver& driver, llvm::ArrayRef<const char*> args);
 
 /**
  * @brief Generates a Nix derivation for a target in a Ninja build graph.

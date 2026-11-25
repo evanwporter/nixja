@@ -41,35 +41,38 @@
 			corePath = final.lib.makeBinPath (final.corePackages ++ [final.llvmPackages_22.clang]);
 
 			# Builder for a single scanned Ninja edge.
-			nixja-task = final.stdenv.mkDerivation {
-				name = "nixja-task";
-				src = self;
+			nixja-task =
+				final.stdenv.mkDerivation {
+					name = "nixja-task";
+					src = self;
 
-				nativeBuildInputs = final.corePackages ++ [
-					final.cmake
-					final.pkg-config
-				];
+					nativeBuildInputs =
+						final.corePackages
+						++ [
+							final.cmake
+							final.pkg-config
+						];
 
-				buildInputs = [
-					final.argparse
-					final.fmt
-					final.spdlog
-					final.libblake3
-					final.nlohmann_json
-					final.nix
-					final.llvmPackages_22.llvm
-					final.llvmPackages_22.clang
-					final.llvmPackages_22.clang-unwrapped
-				];
+					buildInputs = [
+						final.argparse
+						final.fmt
+						final.spdlog
+						final.libblake3
+						final.nlohmann_json
+						final.nix
+						final.llvmPackages_22.llvm
+						final.llvmPackages_22.clang
+						final.llvmPackages_22.clang-unwrapped
+					];
 
-				cmakeBuildFlags = [ "--target" "nixja-task" ];
+					cmakeBuildFlags = ["--target" "nixja-task"];
 
-				installPhase = ''
-					runHook preInstall
-					install -Dm755 src/nixja-task/nixja-task "$out/bin/nixja-task"
-					runHook postInstall
-				'';
-			};
+					installPhase = ''
+            					runHook preInstall
+            					install -Dm755 src/nixja-task/nixja-task "$out/bin/nixja-task"
+            					runHook postInstall
+          '';
+				};
 
 			# C++ dependency scanner
 			nixja-scan-deps =
@@ -223,6 +226,7 @@
 											ccache
 											argparse
 											spdlog
+											gtest
 
 											# Nix
 											nix
