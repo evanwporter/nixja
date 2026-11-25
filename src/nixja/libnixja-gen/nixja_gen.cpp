@@ -1,9 +1,10 @@
 #include <algorithm>
 #include <cstdio>
+#include <cctype>
 #include <cstdlib>
 #include <filesystem>
 #include <fmt/ranges.h>
-#include <sstream>
+#include <regex>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -17,6 +18,9 @@
 
 #include <nix/store/store-api.hh>
 #include <nix/util/source-accessor.hh>
+#include <nix/util/serialise.hh>
+#include <clang/Frontend/CompilerInstance.h>
+#include <llvm/TargetParser/Host.h>
 
 // macro conflict between spdlog and nix
 #ifdef debug
@@ -30,7 +34,6 @@
 #include <clang/Driver/Action.h>
 #include <clang/Driver/Compilation.h>
 #include <clang/Driver/Driver.h>
-#include <clang/Tooling/Tooling.h>
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/CommandLine.h>
@@ -62,6 +65,7 @@ struct Derivation {
     //         .render();
 
     bool generates_drv;
+    std::string output_name = "out";
 
     /// Store-file name, used in serialized derivation input maps.
     std::string derivation_path;
@@ -87,6 +91,17 @@ struct Command {
     /// A set of every input src (into the nix store) that this command requires
     std::unordered_set<std::string> inputSrcs;
 };
+
+// Dynamic derivation outputs must end in .drv. Keep the Ninja output
+// recognizable and include the edge id to prevent sanitized-name collisions.
+std::string batch_output_name(const Edge* edge) {
+    std::string name = edge->outputs_.front()->path();
+    for (char& c : name) {
+        const auto ch = static_cast<unsigned char>(c);
+        if (!std::isalnum(ch) && c != '_' && c != '-') c = '_';
+    }
+    return fmt::format("output_{}_{}.drv", name, edge->id_);
+}
 
 /// This function parses a compilation command using the LLVM TOKENIZER.
 /// It returns a list of the include paths and the library paths.
@@ -125,12 +140,31 @@ std::unordered_set<std::string> parseCompileCommand(const std::string& command) 
 }
 
 bool is_compile_command(clang::driver::Driver& driver, llvm::ArrayRef<const char*> args) {
+    if (args.empty() || !args.front())
+        return false;
+
+    // The Clang driver interprets argv as compiler arguments regardless of
+    // argv[0]; do not mistake arbitrary programs that take source paths for
+    // compiler invocations.
+    const std::string executable = fs::path(args.front()).filename().string();
+    static const std::regex compiler_name(
+        R"((?:.+-)?(?:clang(?:\+\+)?|gcc|g\+\+|cc|c\+\+)(?:-[0-9]+(?:\.[0-9]+)*)?)");
+    if (!std::regex_match(executable, compiler_name))
+        return false;
+
     driver.setCheckInputsExist(false);
 
     std::unique_ptr<clang::driver::Compilation> C(
         driver.BuildCompilation(args));
 
-    return C && !C->containsError() && clang::tooling::getCC1Arguments(&driver.getDiags(), C.get());
+    if (!C || C->containsError()) return false;
+    size_t compiler_jobs = 0;
+    for (const auto& job : C->getJobs()) {
+        const auto& job_args = job.getArguments();
+        if (!job_args.empty() && std::string_view(job_args.front()) == "-cc1")
+            ++compiler_jobs;
+    }
+    return compiler_jobs == 1;
 }
 
 /// Given a generic NINJA command, we parse all the possible NIX STORE paths from it
@@ -226,24 +260,6 @@ Result<Command> parseCommand(
     return result;
 }
 
-/// Determine whether a command uses a depfile. This is used for the purpose of determining
-/// whether a edge is static or dynamic.
-/// TODO: Use ninja internals to figure this out
-bool has_depfile(const std::string& command) {
-    std::istringstream stream(command);
-    std::string arg;
-
-    while (stream >> arg) {
-        if (arg == "-MF")
-            return true;
-
-        if (arg.compare(0, 3, "-MF") == 0 && arg.size() > 3)
-            return true;
-    }
-
-    return false;
-}
-
 /**
  * @brief Creates a Nix derivation for a Ninja build edge.
  *
@@ -265,7 +281,8 @@ Result<void> create_derivation(
     const std::string& source_store_path,
     const fs::path& build_relative,
     const nix::ref<nix::Store> store,
-    std::vector<Derivation>& edge_map) {
+    std::vector<Derivation>& edge_map,
+    const std::vector<const Edge*>& batch = {}) {
 
     // processing a edge means creating a drv file for it
 
@@ -288,35 +305,14 @@ Result<void> create_derivation(
     inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
     inputSrcs.push_back(fs::path(CC_PACKAGE_PATH).filename().string());
 
-    const auto command = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
-
-    // TODO: Turn this into actual logging
-    //
-    // std::cout << "Include directories:\n";
-    // for (const auto& path : searchPaths.include) {
-    //     const auto [store_path, sub_path] = store->toStorePath(path);
-    //     const std::string root = store->printStorePath(store_path) + "/";
-    //     std::cout << "  " << root << '\n';
-    // }
-    //
-    // std::cout << "Library directories:\n";
-    // for (const auto& path : searchPaths.library) {
-    //     const auto [store_path, sub_path] = store->toStorePath(path);
-    //     const std::string root = store->printStorePath(store_path) + "/";
-    //
-    //     std::cout << "  " << root << '\n';
-    // }
-
-    for (const auto& path : command.inputSrcs) {
-        // Check if path is in the nix store
-        if (store->isInStore(path)) {
-
-            // If it is in the nix store then convert it to the store path.
-            // storePath: is the /nix/store/XXXXXX
-            // subPath: is the the /nix/store/XXXXX/YYYYYY
-            const auto [storePath, subPath] = store->toStorePath(path);
-            const std::string root = store->printStorePath(storePath);
-            inputSrcs.push_back(fs::path(root).filename().string());
+    const std::vector<const Edge*> edges = batch.empty() ? std::vector<const Edge*> { edge } : batch;
+    for (const Edge* current : edges) {
+        const auto command = TRY(parseCommand(current->EvaluateCommand(), source_root, source_store_path, store));
+        for (const auto& path : command.inputSrcs) {
+            if (store->isInStore(path)) {
+                const auto [storePath, subPath] = store->toStorePath(path);
+                inputSrcs.push_back(fs::path(store->printStorePath(storePath)).filename().string());
+            }
         }
     }
 
@@ -325,67 +321,46 @@ Result<void> create_derivation(
 
     // Meson lists libraries behind order-only .symbols dependencies, so they are not direct inputs
     // but they still need to be tracked and parsed so nixja-task can find them.
-    InputsCollector collector;
-    collector.VisitNode(edge->outputs_.front());
-
-    /// TODO: Can we combine this loop with the one above
-    for (const Node* node : collector.inputs()) {
-        if (const Edge* producer = node->in_edge()) {
-
+    for (const Edge* current : edges) {
+        InputsCollector collector;
+        collector.VisitNode(current->outputs_.front());
+        for (const Node* node : collector.inputs()) {
+            const Edge* producer = node->in_edge();
+            if (!producer) continue;
             const auto& derivation = edge_map[producer->id_];
-
-            const json dynOutputs = derivation.generates_drv
-                ? json::object({
-                      { "out", {
-                                   { "dynamicOutputs", json::object() },
-                                   { "outputs", json::array({ "out" }) },
-                               } },
-                  })
-                : json::object();
-
-            inputDrvs[derivation.derivation_path] = {
-                { "dynamicOutputs", dynOutputs },
-                { "outputs", json::array({ "out" }) },
-            };
-
-        } else {
-            // // This node is an already existing source path
-            // // so we add it to inputSrcs
-            // inputSrcs.push_back(node->path());
-            // volatile bool node_is_mapped = edge_map.count(node) != 0;
+            auto& input = inputDrvs[derivation.derivation_path];
+            if (input.is_null())
+                input = { { "dynamicOutputs", json::object() }, { "outputs", json::array() } };
+            const std::string& output = derivation.output_name;
+            if (std::find(input["outputs"].begin(), input["outputs"].end(), output) == input["outputs"].end())
+                input["outputs"].push_back(output);
+            if (derivation.generates_drv)
+                input["dynamicOutputs"][output] = {
+                    { "dynamicOutputs", json::object() }, { "outputs", json::array({ "out" }) }
+                };
         }
     }
 
     auto completeSpec = spec;
-    completeSpec.linkPhase = spec.linkPhase;
     completeSpec.inputSrcs = inputSrcs;
     completeSpec.inputDrvs = inputDrvs;
     const auto drv_path = TRY(writeDerivation(store, completeSpec));
 
-    // Resolve output paths.
-    std::string generated_path;
-    std::string output_path;
-
-    const auto ca_output = nix::DownstreamPlaceholder::unknownCaOutput(
-        drv_path, "out");
-
-    if (generates_drv) {
-        generated_path = ca_output.render();
-
-        output_path = nix::DownstreamPlaceholder::unknownDerivation(
-                          ca_output, "out")
-                          .render();
-    } else {
-        output_path = ca_output.render();
+    for (const Edge* current : edges) {
+        const std::string name = batch.empty() ? "out" : batch_output_name(current);
+        const auto ca_output = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, name);
+        const std::string output_path = generates_drv
+            ? nix::DownstreamPlaceholder::unknownDerivation(ca_output, "out").render()
+            : ca_output.render();
+        edge_map[current->id_] = Derivation {
+            .generates_drv = generates_drv,
+            .output_name = name,
+            .derivation_path = std::string(drv_path.to_string()),
+            .derivation_store_path = store->printStorePath(drv_path),
+            .generated_path = generates_drv ? ca_output.render() : "",
+            .output_path = output_path,
+        };
     }
-
-    // Record derivation.
-    edge_map[edge->id_] = Derivation {
-        .generates_drv = generates_drv,
-        .derivation_path = std::string(drv_path.to_string()),
-        .derivation_store_path = store->printStorePath(drv_path),
-        .output_path = output_path,
-    };
 
     return { };
 };
@@ -500,99 +475,6 @@ Result<void> process_static_edge(
 
 /// A dynamic edge is one where not all dependencies are known at build time. They
 /// must be discovered.
-Result<void> process_dynamic_edge(
-    const Edge* edge,
-    const fs::path& source_root,
-    const std::string& source_store_path,
-    const fs::path& build_relative,
-    const nix::ref<nix::Store> store,
-    std::vector<Derivation>& edge_map) {
-
-    // Determine derivation name.
-    const auto name = fs::path(edge->outputs_.front()->path()).filename().string();
-
-    std::string derivationName = name;
-    std::replace(derivationName.begin(), derivationName.end(), '.', '_');
-
-    // A derivation-producing output must end in .drv.
-    derivationName += ".drv";
-
-    // Construct command.
-    const std::string command = edge->EvaluateCommand();
-
-    // Construct scanner output arguments.
-    std::string outputs_str;
-
-    for (const auto& output : edge->outputs_)
-        outputs_str += output->path();
-
-    // TODO: Consider replacing find with its absolute path?
-    std::string linkPhase = fmt::format(
-        "mkdir -p \"$NIX_BUILD_TOP\"; "
-        /// TODO: What if the output file is already generated?
-        /// Like a .object file be written for a local build
-        "(cd {0}; "
-        /// Visit every directory and creates the same directory tree
-        /// under $NIX_BUILD_TOP.Those directories are real and writable.
-        "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
-        /// Visits every non directory—regular files and symlinks and creates
-        /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
-        /// to the immutable source-store file.
-        "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
-        source_store_path);
-
-    for (const Node* input : edge->inputs_) {
-        const fs::path path = input->path();
-
-        // Checking if the path is absolute filters out /nix/store paths
-        if (path.is_absolute())
-            continue;
-
-        const Edge* producer = input->in_edge();
-
-        // producer being null means this is a leaf node / source file
-        if (producer == nullptr)
-            continue;
-
-        const fs::path destination = (build_relative / path).lexically_normal();
-        const std::string nix_reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
-        linkPhase += fmt::format(
-            // create all the directories up to destination path
-            "mkdir -p \"$NIX_BUILD_TOP/{}\"; "
-            // -sfn ensures that ln doesn't fail if the destination already exists
-            "ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
-            destination.parent_path().string(),
-            nix_reference,
-            destination.string());
-    }
-
-    const std::string buildPhase = fmt::format(
-        "NIXJA_SCAN_DEPS=$({} -C '{}' "
-        "-i TODO -o {} -- {}); ",
-        NIXJA_SCAN_DEPS_PATH,
-        build_relative.generic_string(),
-        outputs_str,
-        command);
-
-    /// $NIXJA_SCAN_DEPS is a path to a derivation in the nix store. We
-    /// copy this derivation to $out.
-    const std::string installPhase = "cp \"$NIXJA_SCAN_DEPS\" \"$out\"";
-
-    // Configure derivation.
-    const DerivationSpec spec {
-        .name = derivationName,
-        .storeNamePrefix = "nixja-gen",
-        .linkPhase = linkPhase,
-        .buildPhase = buildPhase,
-        .installPhase = installPhase,
-        .outputMethod = "text",
-    };
-
-    TRY(create_derivation(edge, spec, true, source_root, source_store_path, build_relative, store, edge_map));
-
-    return { };
-}
-
 Result<void> process_dynamic_edges(
     const std::vector<const Edge*>& edges,
     const fs::path& source_root,
@@ -601,21 +483,59 @@ Result<void> process_dynamic_edges(
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
 
-    spdlog::debug(
-        "Processing batch of {} dynamic edges",
-        edges.size());
-
-    for (const auto edge : edges) {
-        TRY(process_dynamic_edge(
-            edge,
-            source_root,
-            source_store_path,
-            build_relative,
-            store,
-            edge_map));
+    json database = json::array();
+    std::vector<std::string> outputs;
+    std::string linkPhase = fmt::format(
+        "mkdir -p \"$NIX_BUILD_TOP\"; (cd {0}; "
+        "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
+        "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
+        source_store_path);
+    for (const Edge* edge : edges) {
+        if (edge->inputs_.empty() || edge->outputs_.empty())
+            return Err("Compilation edge {} has no input or output", edge->id_);
+        const std::string output_name = batch_output_name(edge);
+        outputs.push_back(output_name);
+        json edge_outputs = json::array();
+        for (const auto* output : edge->outputs_)
+            edge_outputs.push_back(output->path());
+        const auto parsed = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
+        database.push_back({
+            { "directory", (source_root / build_relative).lexically_normal().string() },
+            { "nixja_directory", build_relative.generic_string() },
+            { "nixja_inputs", parsed.inputSrcs },
+            { "file", edge->inputs_.front()->path() },
+            { "output", edge->outputs_.front()->path() },
+            { "command", parsed.command },
+            { "nixja_output", output_name },
+            { "nixja_outputs", edge_outputs },
+        });
+        for (const Node* input : edge->inputs_) {
+            const fs::path path = input->path();
+            const Edge* producer = input->in_edge();
+            if (path.is_absolute() || !producer) continue;
+            const fs::path destination = (build_relative / path).lexically_normal();
+            const std::string reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
+            linkPhase += fmt::format("mkdir -p \"$NIX_BUILD_TOP/{}\"; ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
+                destination.parent_path().string(), reference, destination.string());
+        }
     }
-
-    return { };
+    const std::string data = database.dump();
+    nix::StringSource source(data);
+    const auto db = store->addToStoreFromDump(source, "nixja-compile-commands.json",
+        nix::FileSerialisationMethod::Flat, nix::ContentAddressMethod::Raw::Flat);
+    const std::string db_path = store->printStorePath(db);
+    const DerivationSpec spec {
+        .name = "compile-batch",
+        .storeNamePrefix = "nixja-gen",
+        .linkPhase = linkPhase,
+        .buildPhase = fmt::format("{} '{}'", NIXJA_SCAN_DEPS_PATH, db_path),
+        .outputMethod = "text",
+        .outputs = outputs,
+        .inputSrcs = json::array({ fs::path(db_path).filename().string() }),
+    };
+    TRY(create_derivation(edges.front(), spec, true, source_root, source_store_path,
+        build_relative, store, edge_map, edges));
+    return {};
 }
 
 /// Kahns Algorithm
@@ -717,6 +637,9 @@ Result<void> topo_process(
     // S = Static edge
     // D = Dynamic edge
 
+    clang::DiagnosticOptions diagnostic_options;
+    auto diagnostics = clang::CompilerInstance::createDiagnostics(*llvm::vfs::getRealFileSystem(), diagnostic_options);
+    clang::driver::Driver compiler("clang++", llvm::sys::getDefaultTargetTriple(), *diagnostics);
     while (!queue.empty()) {
         std::vector<const Edge*> dynamic_edges;
 
@@ -726,7 +649,12 @@ Result<void> topo_process(
             const auto edge = queue.front();
             queue.pop();
 
-            const bool dynamic = has_depfile(edge->EvaluateCommand());
+            llvm::BumpPtrAllocator allocator;
+            llvm::StringSaver saver(allocator);
+            llvm::SmallVector<const char*> args;
+            llvm::cl::TokenizeGNUCommandLine(edge->EvaluateCommand(), saver, args);
+            diagnostics->Reset();
+            const bool dynamic = is_compile_command(compiler, args);
 
             {
                 std::vector<std::string_view> outputs;
@@ -833,7 +761,7 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
         return target_derivation.derivation_store_path;
 
     const auto generated_drv = nix::DownstreamPlaceholder::unknownCaOutput(
-        store->parseStorePath(target_derivation.derivation_store_path), "out");
+        store->parseStorePath(target_derivation.derivation_store_path), target_derivation.output_name);
     const auto generated_output = nix::DownstreamPlaceholder::unknownDerivation(
         generated_drv, "out");
 
@@ -845,12 +773,12 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
     const json finalInputDrvs = {
         { target_derivation.derivation_path, {
                                                  { "dynamicOutputs", {
-                                                                         { "out", {
+                                                                         { target_derivation.output_name, {
                                                                                       { "dynamicOutputs", json::object() },
                                                                                       { "outputs", json::array({ "out" }) },
                                                                                   } },
                                                                      } },
-                                                 { "outputs", json::array({ "out" }) },
+                                                 { "outputs", json::array({ target_derivation.output_name }) },
                                              } },
     };
 

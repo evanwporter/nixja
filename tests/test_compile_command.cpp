@@ -44,6 +44,11 @@ TEST_F(CompileCommandTest, ReturnsTrueForCompilationCommands) {
 
 TEST_F(CompileCommandTest, ReturnsFalseForNonCompilationCommands) {
     const std::vector<std::vector<const char*>> cases {
+        { "python", "script.py" },
+        { "python3", "-m", "module" },
+        { "./it" },
+        { "./it", "input.cpp" },
+        { "echo", "hello" },
         { "clang++", "main.o", "-o", "main" },
         { "clang++", "-shared", "main.o", "-o", "libmain.so" },
         { "clang++", "-c", "main.s", "-o", "main.o" },

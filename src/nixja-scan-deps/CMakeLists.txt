@@ -6,6 +6,7 @@ target_link_libraries(nixja-scan-deps PRIVATE
     PkgConfig::NIX_STORE
     fmt::fmt
     spdlog::spdlog
+    LLVMSupport
 )
 
 target_compile_definitions(nixja-scan-deps PRIVATE

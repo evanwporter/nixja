@@ -113,6 +113,9 @@ struct DerivationSpec {
     /// `nar` or `text`
     std::string outputMethod;
 
+    /// Names of the derivation outputs.
+    std::vector<std::string> outputs = { "out" };
+
     json inputSrcs = json::array();
     json inputDrvs = json::object();
 

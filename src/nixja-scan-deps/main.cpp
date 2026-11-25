@@ -1,12 +1,10 @@
-#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <stdexcept>
 #include <iostream>
-#include <regex>
-#include <sstream>
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -19,58 +17,16 @@
 
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/Allocator.h>
+#include <llvm/Support/StringSaver.h>
 
 #include "common.hpp"
+#include "dependency_parser.hpp"
 
 namespace fs = std::filesystem;
 
 using json = nlohmann::json;
-
-/// Parse Makefile dependency output from clang-scan-deps
-/// TODO: Use whatever ninja uses internally
-/// TODO: Can makefile_content be a reference instead?
-std::unordered_map<std::string, std::unordered_set<std::string>>
-parse_makefile(std::string makefile_content) {
-    std::unordered_map<std::string, std::unordered_set<std::string>>
-        dependency_graph;
-
-    makefile_content = std::regex_replace(
-        makefile_content,
-        std::regex(R"(\\\r?\n)"),
-        " ");
-
-    std::istringstream file_stream(makefile_content);
-    std::string line;
-
-    while (std::getline(file_stream, line)) {
-        const size_t start = line.find_first_not_of(" \t\r");
-
-        if (start == std::string::npos || line[start] == '#')
-            continue;
-
-        const size_t colon = line.find(':');
-
-        if (colon == std::string::npos)
-            continue;
-
-        std::string target = line.substr(start, colon - start);
-
-        const size_t end = target.find_last_not_of(" \t\r");
-        target.erase(end + 1);
-
-        const std::string dependencies = line.substr(colon + 1);
-
-        std::istringstream dep_stream(dependencies);
-        std::string dependency;
-
-        while (dep_stream >> dependency)
-            dependency_graph[target].insert(dependency);
-
-        dependency_graph.try_emplace(target);
-    }
-
-    return dependency_graph;
-}
 
 struct Dependencies {
     /// A list of source and header files located under the `project_root`
@@ -122,159 +78,144 @@ Dependencies local_dependencies(
     return result;
 }
 
-/// Scan compiler dependencies for a single edge
-/// TODO: This needs to be done in the derivation on a per EDGE basis
-std::unordered_set<std::string> scan_dependencies(const std::string command) {
-    // Run clang-scan-deps.
-    const std::string scan_command = "clang-scan-deps -- " + command;
-
-    const std::string output = exec(scan_command.c_str());
-
-    const auto dependency_map = parse_makefile(output);
-
-    /// TODO: Think about whether we need to keep the dependencies seperate
-
-    // Combine all the dependencies into a single set
-    std::unordered_set<std::string> all_dependencies;
-    for (auto& [target, dependencies] : dependency_map) {
-        all_dependencies.insert(dependencies.begin(), dependencies.end());
-    }
-
-    return all_dependencies;
-}
-
+// clang-scan-deps needs absolute working directories, which are only known
+// after the source tree has been reconstructed in the builder.
 int main(int argc, char* argv[]) {
-    /// Inputs to the specific ninja edge
-    /// Currently unused since all this information can be gathered from the
-    /// scan command.
-    std::vector<std::string> inputs;
-
-    /// Outputs of the ninja edge
-    std::vector<std::string> outputs;
-
-    std::vector<std::string>* current_list = nullptr;
-
-    /// nixja-scan-deps starts in the reconstructed project source tree.
-    const fs::path source_root = fs::current_path();
-
-    const fs::path configured_task_path = NIXJA_TASK_PATH;
-    const fs::path task_path = configured_task_path.is_absolute()
-        ? configured_task_path
-        : source_root / configured_task_path;
-
-    /// The Ninja working directory relative to project_root.
-    fs::path build_relative = ".";
-
-    for (int i = 1; i < argc; ++i) {
-        std::string arg = argv[i];
-
-        if (arg == "--")
-            break;
-        else if (arg == "-i") {
-            current_list = &inputs;
-        } else if (arg == "-o") {
-            current_list = &outputs;
-        } else if (arg == "-C") {
-            if (i + 1 >= argc) {
-                std::cerr << "Missing value for -C\n";
-                return 1;
-            }
-
-            build_relative = argv[++i];
-        } else if (!arg.empty() && arg[0] == '-') {
-            std::cerr << "Unknown flag: " << arg << '\n';
-            return 1;
-        } else if (current_list) {
-            current_list->push_back(arg);
-        } else {
-            std::cerr << "Expected -i or -o before: " << arg << '\n';
-            return 1;
-        }
-    }
-
-    const std::string command = arguments_after_separator(argc, argv);
-
-    // The compiler command, and clang-scan-deps, use Ninja's working
-    // directory just as a normal `ninja -C` invocation would.
-    fs::current_path(source_root / build_relative);
-
-    nix::initLibStore(true);
-    const nix::ref<nix::Store> store = nix::openStore();
-
-    const fs::path task_command = [&] {
-        const fs::path canonical_task_path = fs::canonical(task_path);
-        if (store->isInStore(canonical_task_path.string())) {
-            return canonical_task_path;
-        }
-
-        const auto stored = store->addToStore(
-            nixja_store_name("nixja-task", "nixja-scan-deps"),
-            nix::makeFSSourceAccessor(canonical_task_path),
-            nix::ContentAddressMethod::Raw::Flat);
-        return fs::path(store->printStorePath(stored));
-    }();
-
-    const auto dependencies = local_dependencies(scan_dependencies(command), store, source_root);
-
-    /// TODO: Maybe give a error or something here?
-    if (outputs.empty())
-        return 0;
-
-    std::string name = outputs.front();
-
-    std::replace(name.begin(), name.end(), '/', '_');
-    std::replace(name.begin(), name.end(), '.', '_');
-
-    nix::experimentalFeatureSettings.experimentalFeatures.set(
-        "ca-derivations dynamic-derivations");
-
-    /// [Absolute /nix/store/XYZ-path-filename, Relative path under source_root]
-    const std::vector<StoreFile> store_paths = add_dependencies_to_store(
-        dependencies.local, store, source_root, source_root / build_relative);
-
-    TaskSpec task_spec {
-        .inputs = store_paths,
-        .build_relative = build_relative,
-        .command = command,
-    };
-
-    for (const auto& output : outputs)
-        task_spec.outputs.emplace_back(output);
-
-    /// Add each storePath as a inputSrc
-    std::vector<std::string> inputSrcs;
-    inputSrcs.reserve(store_paths.size() + 1);
-    for (const auto& [storePath, file_relative] : store_paths)
-        inputSrcs.push_back(fs::path(storePath).filename().string());
-
-    const auto [task_store_path, _] = store->toStorePath(task_command.string());
-    inputSrcs.push_back(fs::path(store->printStorePath(task_store_path)).filename().string());
-    inputSrcs.push_back(fs::path(NIX_STORE_PACKAGE_PATH).filename().string());
-    inputSrcs.push_back(fs::path(NIX_UTIL_PACKAGE_PATH).filename().string());
-    inputSrcs.push_back(fs::path(FMT_PACKAGE_PATH).filename().string());
-    inputSrcs.push_back(fs::path(SPDLOG_PACKAGE_PATH).filename().string());
-    inputSrcs.push_back(fs::path(CC_PACKAGE_PATH).filename().string());
-
-    for (const auto& storePath : dependencies.store)
-        inputSrcs.push_back(fs::path(storePath).filename().string());
-
-    const json inputDrvs = json::object();
-
-    const auto path = writeDerivation(store, {
-                                                 .name = name,
-                                                 .storeNamePrefix = "nixja-scan-deps",
-                                                 .buildPhase = make_task_command(task_spec, task_command),
-                                                 .outputMethod = "nar",
-                                                 .inputSrcs = inputSrcs,
-                                                 .inputDrvs = inputDrvs,
-                                             });
-
-    if (!path.has_value()) {
-        std::cerr << path.error() << std::endl;
+    if (argc != 2) {
+        std::cerr << "Usage: nixja-scan-deps COMPILATION_DATABASE\n";
         return 1;
     }
 
-    std::cout << store->printStorePath(path.value()) << '\n';
+    try {
+        const fs::path source_root = fs::current_path();
+        std::ifstream input(argv[1]);
+        if (!input) throw std::runtime_error("Cannot open compilation database");
+        json database = json::parse(input);
+        if (!database.is_array() || database.empty())
+            throw std::runtime_error("Compilation database must be a non-empty array");
 
-    return 0;
+        const fs::path configured_task_path = NIXJA_TASK_PATH;
+        const fs::path task_path = configured_task_path.is_absolute()
+            ? configured_task_path : source_root / configured_task_path;
+        for (auto& entry : database) {
+            fs::path directory = entry.value("nixja_directory", entry.at("directory").get<std::string>());
+            if (directory.is_relative()) directory = source_root / directory;
+            entry["directory"] = directory.lexically_normal().string();
+        }
+
+        // Pass the entire database to a single clang-scan-deps invocation.
+        char tmp_name[] = "/tmp/nixja-compdb-XXXXXX";
+        int fd = mkstemp(tmp_name);
+        if (fd < 0) throw std::runtime_error("Cannot create temporary compilation database");
+        close(fd);
+        struct TempFile {
+            const char* name;
+            ~TempFile() { unlink(name); }
+        } temp { tmp_name };
+        {
+            std::ofstream file(tmp_name);
+            json scan_database = database;
+            for (auto& entry : scan_database) {
+                // Force a unique dependency target for each entry, even if
+                // the original command specifies its own -MT or -MQ.
+                llvm::BumpPtrAllocator allocator;
+                llvm::StringSaver saver(allocator);
+                llvm::SmallVector<const char*> args;
+                llvm::cl::TokenizeGNUCommandLine(entry.at("command").get<std::string>(), saver, args);
+                json scan_args = json::array();
+                for (size_t i = 0; i < args.size(); ++i) {
+                    const std::string_view arg(args[i]);
+                    if (arg == "-MT" || arg == "-MQ") { if (i + 1 < args.size()) ++i; continue; }
+                    if (arg.starts_with("-MT") || arg.starts_with("-MQ")) continue;
+                    scan_args.push_back(arg);
+                }
+                scan_args.push_back("-MQ");
+                scan_args.push_back(entry.at("output"));
+                entry.erase("command");
+                entry["arguments"] = std::move(scan_args);
+                entry.erase("nixja_output");
+                entry.erase("nixja_outputs");
+                entry.erase("nixja_directory");
+                entry.erase("nixja_inputs");
+            }
+            file << scan_database.dump();
+            if (!file) throw std::runtime_error("Cannot write compilation database");
+        }
+        const std::string scan_command = fmt::format(
+            "clang-scan-deps -format=make -compilation-database={} ", tmp_name);
+        FILE* pipe = popen(scan_command.c_str(), "r");
+        if (!pipe) throw std::runtime_error("Cannot start clang-scan-deps");
+        std::string output;
+        std::array<char, 4096> buffer;
+        while (fgets(buffer.data(), buffer.size(), pipe)) output += buffer.data();
+        const int status = pclose(pipe);
+        if (status == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
+            throw std::runtime_error("clang-scan-deps failed");
+        const auto dependency_map = parse_makefile(output);
+
+        nix::experimentalFeatureSettings.experimentalFeatures.set(
+            "ca-derivations dynamic-derivations");
+        nix::initLibStore(true);
+        const nix::ref<nix::Store> store = nix::openStore();
+        const fs::path canonical_task = fs::canonical(task_path);
+        const fs::path task_command = store->isInStore(canonical_task.string())
+            ? canonical_task
+            : fs::path(store->printStorePath(store->addToStore(
+                nixja_store_name("nixja-task", "nixja-scan-deps"),
+                nix::makeFSSourceAccessor(canonical_task),
+                nix::ContentAddressMethod::Raw::NixArchive)));
+        const auto [task_store_path, ignored] = store->toStorePath(task_command.string());
+
+        for (const auto& entry : database) {
+            const fs::path directory = entry.at("directory").get<std::string>();
+            const fs::path relative = directory.lexically_relative(source_root);
+            if (relative.empty() || relative.is_absolute() || *relative.begin() == "..")
+                throw std::runtime_error("Compilation directory is outside the source tree");
+            const std::string target = entry.at("output").get<std::string>();
+            auto found = dependency_map.find(target);
+            if (found == dependency_map.end())
+                throw std::runtime_error("No dependency result for " + target);
+            fs::current_path(directory);
+            const auto deps = local_dependencies(found->second, store, source_root);
+            fs::current_path(source_root);
+            const auto files = add_dependencies_to_store(deps.local, store, source_root, directory);
+            TaskSpec task {
+                .inputs = files,
+                .build_relative = relative,
+                .command = entry.at("command").get<std::string>(),
+            };
+            for (const auto& item : entry.at("nixja_outputs"))
+                task.outputs.emplace_back(item.get<std::string>());
+            std::vector<std::string> inputSrcs;
+            for (const auto& file : files)
+                inputSrcs.push_back(file.source_store_path.filename().string());
+            inputSrcs.push_back(fs::path(store->printStorePath(task_store_path)).filename().string());
+            for (const auto& path : { NIX_STORE_PACKAGE_PATH, NIX_UTIL_PACKAGE_PATH,
+                                      FMT_PACKAGE_PATH, SPDLOG_PACKAGE_PATH, CC_PACKAGE_PATH })
+                inputSrcs.push_back(fs::path(path).filename().string());
+            for (const auto& path : deps.store)
+                inputSrcs.push_back(fs::path(path).filename().string());
+            for (const auto& item : entry.value("nixja_inputs", json::array())) {
+                const std::string path = item.get<std::string>();
+                if (store->isInStore(path)) {
+                    const auto [root, ignored_subpath] = store->toStorePath(path);
+                    inputSrcs.push_back(fs::path(store->printStorePath(root)).filename().string());
+                }
+            }
+            const std::string name = entry.at("nixja_output").get<std::string>();
+            const auto drv = writeDerivation(store, {
+                .name = name, .storeNamePrefix = "nixja-scan-deps",
+                .buildPhase = make_task_command(task, task_command),
+                .outputMethod = "nar", .inputSrcs = inputSrcs,
+            });
+            if (!drv) throw std::runtime_error(drv.error());
+            const char* destination = std::getenv(name.c_str());
+            if (!destination) throw std::runtime_error("Missing Nix output variable: " + name);
+            fs::copy_file(store->printStorePath(*drv), destination);
+        }
+        return 0;
+    } catch (const std::exception& error) {
+        std::cerr << "nixja-scan-deps: " << error.what() << '\n';
+        return 1;
+    }
 }
