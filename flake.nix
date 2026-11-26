@@ -224,7 +224,6 @@
 											nlohmann_json
 											pkg-config
 											fmt
-											ccache
 											argparse
 											spdlog
 											gtest

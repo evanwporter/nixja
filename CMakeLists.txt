@@ -6,11 +6,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-endif()
-
 set(NINJA_BUILD_BINARY OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
@@ -26,6 +21,9 @@ find_package(argparse CONFIG REQUIRED)
 find_package(Clang CONFIG REQUIRED)
 
 add_subdirectory(external/ninja)
+set_target_properties(libninja libninja-re2c PROPERTIES
+    INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF
+)
 add_subdirectory(external/expected-fs)
 add_subdirectory(external/libpatchelf)
 
