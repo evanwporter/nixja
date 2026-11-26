@@ -487,6 +487,7 @@ Result<void> process_dynamic_edges(
     std::vector<Derivation>& edge_map) {
 
     /// Compilation database
+    /// This is added to the store, and then passed to nixja-scan-deps as a arg
     json database = json::array();
 
     std::vector<std::string> outputs;

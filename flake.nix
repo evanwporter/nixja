@@ -66,6 +66,7 @@
 					];
 
 					cmakeBuildFlags = ["--target" "nixja-task"];
+					cmakeFlags = ["-DNIXJA_BUILD_TESTS=OFF"];
 
 					installPhase = ''
             					runHook preInstall
@@ -102,6 +103,7 @@
 					];
 
 					cmakeFlags = [
+						"-DNIXJA_BUILD_TESTS=OFF"
 						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
 					];
 
@@ -150,6 +152,7 @@
 					];
 
 					cmakeFlags = [
+						"-DNIXJA_BUILD_TESTS=OFF"
 						"-DnixjaScanDeps=${final.nixja-scan-deps}/bin/nixja-scan-deps"
 						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
 					];
