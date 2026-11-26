@@ -155,6 +155,8 @@ Result<nix::StorePath> writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec);
 
+/// Converts a name to stomething we can do the nix store. This includes converting `/` to `_`,
+/// and adding the prefix to the name
 std::string nixja_store_name(std::string_view name, std::string_view prefix);
 
 /// Execute shell command and capture stdout

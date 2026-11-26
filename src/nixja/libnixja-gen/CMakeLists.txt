@@ -1,4 +1,8 @@
 add_library(libnixja-gen STATIC nixja_gen.cpp)
+target_sources(libnixja-gen PRIVATE
+    $<TARGET_OBJECTS:libninja>
+    $<TARGET_OBJECTS:libninja-re2c>
+)
 set_target_properties(libnixja-gen PROPERTIES OUTPUT_NAME nixja-gen)
 
 target_compile_options(libnixja-gen PRIVATE -Uunix)
