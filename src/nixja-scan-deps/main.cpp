@@ -2,8 +2,8 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
-#include <stdexcept>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -16,10 +16,10 @@
 #include <nix/util/source-accessor.hh>
 
 #include <fmt/format.h>
-#include <nlohmann/json.hpp>
-#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/Allocator.h>
+#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/StringSaver.h>
+#include <nlohmann/json.hpp>
 
 #include "common.hpp"
 #include "dependency_parser.hpp"
@@ -89,24 +89,28 @@ int main(int argc, char* argv[]) {
     try {
         const fs::path source_root = fs::current_path();
         std::ifstream input(argv[1]);
-        if (!input) throw std::runtime_error("Cannot open compilation database");
+        if (!input)
+            throw std::runtime_error("Cannot open compilation database");
         json database = json::parse(input);
         if (!database.is_array() || database.empty())
             throw std::runtime_error("Compilation database must be a non-empty array");
 
         const fs::path configured_task_path = NIXJA_TASK_PATH;
         const fs::path task_path = configured_task_path.is_absolute()
-            ? configured_task_path : source_root / configured_task_path;
+            ? configured_task_path
+            : source_root / configured_task_path;
         for (auto& entry : database) {
             fs::path directory = entry.value("nixja_directory", entry.at("directory").get<std::string>());
-            if (directory.is_relative()) directory = source_root / directory;
+            if (directory.is_relative())
+                directory = source_root / directory;
             entry["directory"] = directory.lexically_normal().string();
         }
 
         // Pass the entire database to a single clang-scan-deps invocation.
         char tmp_name[] = "/tmp/nixja-compdb-XXXXXX";
         int fd = mkstemp(tmp_name);
-        if (fd < 0) throw std::runtime_error("Cannot create temporary compilation database");
+        if (fd < 0)
+            throw std::runtime_error("Cannot create temporary compilation database");
         close(fd);
         struct TempFile {
             const char* name;
@@ -125,8 +129,13 @@ int main(int argc, char* argv[]) {
                 json scan_args = json::array();
                 for (size_t i = 0; i < args.size(); ++i) {
                     const std::string_view arg(args[i]);
-                    if (arg == "-MT" || arg == "-MQ") { if (i + 1 < args.size()) ++i; continue; }
-                    if (arg.starts_with("-MT") || arg.starts_with("-MQ")) continue;
+                    if (arg == "-MT" || arg == "-MQ") {
+                        if (i + 1 < args.size())
+                            ++i;
+                        continue;
+                    }
+                    if (arg.starts_with("-MT") || arg.starts_with("-MQ"))
+                        continue;
                     scan_args.push_back(arg);
                 }
                 scan_args.push_back("-MQ");
@@ -139,15 +148,18 @@ int main(int argc, char* argv[]) {
                 entry.erase("nixja_inputs");
             }
             file << scan_database.dump();
-            if (!file) throw std::runtime_error("Cannot write compilation database");
+            if (!file)
+                throw std::runtime_error("Cannot write compilation database");
         }
         const std::string scan_command = fmt::format(
             "clang-scan-deps -format=make -compilation-database={} ", tmp_name);
         FILE* pipe = popen(scan_command.c_str(), "r");
-        if (!pipe) throw std::runtime_error("Cannot start clang-scan-deps");
+        if (!pipe)
+            throw std::runtime_error("Cannot start clang-scan-deps");
         std::string output;
         std::array<char, 4096> buffer;
-        while (fgets(buffer.data(), buffer.size(), pipe)) output += buffer.data();
+        while (fgets(buffer.data(), buffer.size(), pipe))
+            output += buffer.data();
         const int status = pclose(pipe);
         if (status == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
             throw std::runtime_error("clang-scan-deps failed");
@@ -161,9 +173,9 @@ int main(int argc, char* argv[]) {
         const fs::path task_command = store->isInStore(canonical_task.string())
             ? canonical_task
             : fs::path(store->printStorePath(store->addToStore(
-                nixja_store_name("nixja-task", "nixja-scan-deps"),
-                nix::makeFSSourceAccessor(canonical_task),
-                nix::ContentAddressMethod::Raw::NixArchive)));
+                  nixja_store_name("nixja-task", "nixja-scan-deps"),
+                  nix::makeFSSourceAccessor(canonical_task),
+                  nix::ContentAddressMethod::Raw::NixArchive)));
         const auto [task_store_path, ignored] = store->toStorePath(task_command.string());
 
         for (const auto& entry : database) {
@@ -190,8 +202,7 @@ int main(int argc, char* argv[]) {
             for (const auto& file : files)
                 inputSrcs.push_back(file.source_store_path.filename().string());
             inputSrcs.push_back(fs::path(store->printStorePath(task_store_path)).filename().string());
-            for (const auto& path : { NIX_STORE_PACKAGE_PATH, NIX_UTIL_PACKAGE_PATH,
-                                      FMT_PACKAGE_PATH, SPDLOG_PACKAGE_PATH, CC_PACKAGE_PATH })
+            for (const auto& path : { NIX_STORE_PACKAGE_PATH, NIX_UTIL_PACKAGE_PATH, FMT_PACKAGE_PATH, SPDLOG_PACKAGE_PATH, CC_PACKAGE_PATH })
                 inputSrcs.push_back(fs::path(path).filename().string());
             for (const auto& path : deps.store)
                 inputSrcs.push_back(fs::path(path).filename().string());
@@ -204,13 +215,17 @@ int main(int argc, char* argv[]) {
             }
             const std::string name = entry.at("nixja_output").get<std::string>();
             const auto drv = writeDerivation(store, {
-                .name = name, .storeNamePrefix = "nixja-scan-deps",
-                .buildPhase = make_task_command(task, task_command),
-                .outputMethod = "nar", .inputSrcs = inputSrcs,
-            });
-            if (!drv) throw std::runtime_error(drv.error());
+                                                        .name = name,
+                                                        .storeNamePrefix = "nixja-scan-deps",
+                                                        .buildPhase = make_task_command(task, task_command),
+                                                        .outputMethod = "nar",
+                                                        .inputSrcs = inputSrcs,
+                                                    });
+            if (!drv)
+                throw std::runtime_error(drv.error());
             const char* destination = std::getenv(name.c_str());
-            if (!destination) throw std::runtime_error("Missing Nix output variable: " + name);
+            if (!destination)
+                throw std::runtime_error("Missing Nix output variable: " + name);
             fs::copy_file(store->printStorePath(*drv), destination);
         }
         return 0;

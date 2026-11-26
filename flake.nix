@@ -65,7 +65,7 @@
 						final.llvmPackages_22.clang-unwrapped
 					];
 
-					cmakeBuildFlags = ["--target" "nixja-task"];
+					buildFlags = ["nixja-task"];
 					cmakeFlags = ["-DNIXJA_BUILD_TESTS=OFF"];
 
 					installPhase = ''
@@ -106,7 +106,7 @@
 						"-DNIXJA_BUILD_TESTS=OFF"
 						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
 					];
-					cmakeBuildFlags = ["--target" "nixja-scan-deps"];
+					buildFlags = ["nixja-scan-deps"];
 
 					installPhase = ''
             						runHook preInstall
@@ -147,10 +147,7 @@
 						final.llvmPackages_22.clang-unwrapped
 					];
 
-					cmakeBuildFlags = [
-						"--target"
-						"nixja"
-					];
+					buildFlags = ["nixja"];
 
 					cmakeFlags = [
 						"-DNIXJA_BUILD_TESTS=OFF"
