@@ -34,8 +34,11 @@ add_subdirectory(src/nixja)
 add_subdirectory(src/nixja-scan-deps)
 add_subdirectory(src/nixja-task)
 
-enable_testing()
-add_subdirectory(tests)
+option(NIXJA_BUILD_TESTS "Build nixja tests" ON)
+if(NIXJA_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
 function(add_nixja_hardlinks dir)
     foreach(target IN ITEMS nixja nixja-scan-deps nixja-task)
