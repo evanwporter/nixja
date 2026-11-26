@@ -350,11 +350,19 @@ Result<void> create_derivation(
     const auto drv_path = TRY(writeDerivation(store, completeSpec));
 
     for (const Edge* current : edges) {
+        /// Name is the output name (by default this is `out`)
         const std::string name = batch.empty() ? "out" : batch_output_name(current);
+
+        /// For static edges this is the final output path. But for dynamic edges this is the derivation path
+        /// that build the final output
         const auto ca_output = nix::DownstreamPlaceholder::unknownCaOutput(drv_path, name);
+
+        /// This is the output path of the derivation
         const std::string output_path = generates_drv
             ? nix::DownstreamPlaceholder::unknownDerivation(ca_output, "out").render()
             : ca_output.render();
+
+        /// Create the derivation and add it to the edge map
         edge_map[current->id_] = Derivation {
             .generates_drv = generates_drv,
             .output_name = name,
@@ -487,7 +495,8 @@ Result<void> process_dynamic_edges(
     std::vector<Derivation>& edge_map) {
 
     /// Compilation database
-    /// This is added to the store, and then passed to nixja-scan-deps as a arg
+    /// This is added to the store, and then passed to nixja-scan-deps as a arg.
+    /// Contains a list of every compialtion command / dynamic edge.
     json database = json::array();
 
     std::vector<std::string> outputs;
@@ -511,7 +520,7 @@ Result<void> process_dynamic_edges(
         const std::string output_name = batch_output_name(edge);
         outputs.push_back(output_name);
 
-        /// Files the original ninja build edge produces when it runs
+        /// Files that the ninja build edge produces when it runs
         json edge_outputs = json::array();
         for (const auto* output : edge->outputs_)
             edge_outputs.push_back(output->path());
@@ -558,6 +567,9 @@ Result<void> process_dynamic_edges(
 
     spdlog::debug("Creating compilation database at {}", db_path);
 
+    /// Create the derivation that will run nixja-scan-deps, and generate a bunch of mini derivations.
+    /// The output of this is a derivation with multiple output possibilities. By output possibility I mean
+    /// "out".
     const DerivationSpec spec {
         .name = "compile-batch",
         .storeNamePrefix = "nixja-gen",
