@@ -1,7 +1,7 @@
 #include "common.hpp"
 
-#include <filesystem>
 #include <cctype>
+#include <filesystem>
 
 #include <fmt/format.h>
 #include <fmt/ranges.h>
@@ -174,7 +174,8 @@ std::string arguments_after_separator(int argc, char* argv[]) {
 
 static std::string shell_quote(std::string_view value) {
     std::string result = "'";
-    for (char c : value) result += c == '\'' ? "'\\''" : std::string(1, c);
+    for (char c : value)
+        result += c == '\'' ? "'\\''" : std::string(1, c);
     return result + "'";
 }
 
@@ -188,8 +189,7 @@ std::string make_task_command(const TaskSpec& spec, const fs::path& task_command
         outputs += shell_quote(output.string()) + " ";
 
     const std::string input_directory = spec.source_store_path.has_value()
-        ? " -d " + shell_quote(spec.source_store_path->string()) : "";
-    return fmt::format("{} -i {} -o {}{} -C {} -- {}",
-        shell_quote(task_command.string()), inputs, outputs, input_directory,
-        shell_quote(spec.build_relative.string()), shell_quote(spec.command));
+        ? " -d " + shell_quote(spec.source_store_path->string())
+        : "";
+    return fmt::format("{} -i {} -o {}{} -C {} -- {}", shell_quote(task_command.string()), inputs, outputs, input_directory, shell_quote(spec.build_relative.string()), shell_quote(spec.command));
 }

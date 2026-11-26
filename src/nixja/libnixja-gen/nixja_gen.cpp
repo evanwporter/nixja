@@ -1,6 +1,6 @@
 #include <algorithm>
-#include <cstdio>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fmt/ranges.h>
@@ -16,11 +16,11 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
-#include <nix/store/store-api.hh>
-#include <nix/util/source-accessor.hh>
-#include <nix/util/serialise.hh>
 #include <clang/Frontend/CompilerInstance.h>
 #include <llvm/TargetParser/Host.h>
+#include <nix/store/store-api.hh>
+#include <nix/util/serialise.hh>
+#include <nix/util/source-accessor.hh>
 
 // macro conflict between spdlog and nix
 #ifdef debug
@@ -98,7 +98,8 @@ std::string batch_output_name(const Edge* edge) {
     std::string name = edge->outputs_.front()->path();
     for (char& c : name) {
         const auto ch = static_cast<unsigned char>(c);
-        if (!std::isalnum(ch) && c != '_' && c != '-') c = '_';
+        if (!std::isalnum(ch) && c != '_' && c != '-')
+            c = '_';
     }
     return fmt::format("output_{}_{}.drv", name, edge->id_);
 }
@@ -157,7 +158,8 @@ bool is_compile_command(clang::driver::Driver& driver, llvm::ArrayRef<const char
     std::unique_ptr<clang::driver::Compilation> C(
         driver.BuildCompilation(args));
 
-    if (!C || C->containsError()) return false;
+    if (!C || C->containsError())
+        return false;
     size_t compiler_jobs = 0;
     for (const auto& job : C->getJobs()) {
         const auto& job_args = job.getArguments();
@@ -282,7 +284,7 @@ Result<void> create_derivation(
     const fs::path& build_relative,
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map,
-    const std::vector<const Edge*>& batch = {}) {
+    const std::vector<const Edge*>& batch = { }) {
 
     // processing a edge means creating a drv file for it
 
@@ -326,7 +328,8 @@ Result<void> create_derivation(
         collector.VisitNode(current->outputs_.front());
         for (const Node* node : collector.inputs()) {
             const Edge* producer = node->in_edge();
-            if (!producer) continue;
+            if (!producer)
+                continue;
             const auto& derivation = edge_map[producer->id_];
             auto& input = inputDrvs[derivation.derivation_path];
             if (input.is_null())
@@ -483,7 +486,9 @@ Result<void> process_dynamic_edges(
     const nix::ref<nix::Store> store,
     std::vector<Derivation>& edge_map) {
 
+    /// Compilation database
     json database = json::array();
+
     std::vector<std::string> outputs;
     std::string linkPhase = fmt::format(
         "mkdir -p \"$NIX_BUILD_TOP\"; (cd {0}; "
@@ -512,17 +517,16 @@ Result<void> process_dynamic_edges(
         for (const Node* input : edge->inputs_) {
             const fs::path path = input->path();
             const Edge* producer = input->in_edge();
-            if (path.is_absolute() || !producer) continue;
+            if (path.is_absolute() || !producer)
+                continue;
             const fs::path destination = (build_relative / path).lexically_normal();
             const std::string reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
-            linkPhase += fmt::format("mkdir -p \"$NIX_BUILD_TOP/{}\"; ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
-                destination.parent_path().string(), reference, destination.string());
+            linkPhase += fmt::format("mkdir -p \"$NIX_BUILD_TOP/{}\"; ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ", destination.parent_path().string(), reference, destination.string());
         }
     }
     const std::string data = database.dump();
     nix::StringSource source(data);
-    const auto db = store->addToStoreFromDump(source, "nixja-compile-commands.json",
-        nix::FileSerialisationMethod::Flat, nix::ContentAddressMethod::Raw::Flat);
+    const auto db = store->addToStoreFromDump(source, "nixja-compile-commands.json", nix::FileSerialisationMethod::Flat, nix::ContentAddressMethod::Raw::Flat);
     const std::string db_path = store->printStorePath(db);
     const DerivationSpec spec {
         .name = "compile-batch",
@@ -533,9 +537,8 @@ Result<void> process_dynamic_edges(
         .outputs = outputs,
         .inputSrcs = json::array({ fs::path(db_path).filename().string() }),
     };
-    TRY(create_derivation(edges.front(), spec, true, source_root, source_store_path,
-        build_relative, store, edge_map, edges));
-    return {};
+    TRY(create_derivation(edges.front(), spec, true, source_root, source_store_path, build_relative, store, edge_map, edges));
+    return { };
 }
 
 /// Kahns Algorithm
@@ -774,9 +777,9 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
         { target_derivation.derivation_path, {
                                                  { "dynamicOutputs", {
                                                                          { target_derivation.output_name, {
-                                                                                      { "dynamicOutputs", json::object() },
-                                                                                      { "outputs", json::array({ "out" }) },
-                                                                                  } },
+                                                                                                              { "dynamicOutputs", json::object() },
+                                                                                                              { "outputs", json::array({ "out" }) },
+                                                                                                          } },
                                                                      } },
                                                  { "outputs", json::array({ target_derivation.output_name }) },
                                              } },
