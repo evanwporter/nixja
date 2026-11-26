@@ -493,21 +493,38 @@ Result<void> process_dynamic_edges(
     std::vector<std::string> outputs;
     std::string linkPhase = fmt::format(
         "mkdir -p \"$NIX_BUILD_TOP\"; (cd {0}; "
+        /// Visit every directory and creates the same directory tree
+        /// under $NIX_BUILD_TOP.Those directories are real and writable.
         "find . -type d -exec mkdir -p \"$NIX_BUILD_TOP/{{}}\" \\; ; "
+        /// Visits every non directory—regular files and symlinks and creates
+        /// a symlink at the matching path under $NIX_BUILD_TOP, pointing back
+        /// to the immutable source-store file.
         "find . ! -type d -exec ln -s \"{0}/{{}}\" \"$NIX_BUILD_TOP/{{}}\" \\;); ",
         source_store_path);
     for (const Edge* edge : edges) {
         if (edge->inputs_.empty() || edge->outputs_.empty())
             return Err("Compilation edge {} has no input or output", edge->id_);
+
+        /// The nix derivation produced by the nixja-scan-deps.
+        /// Since multiple derivations are produced potentially (one for each dynamic
+        /// edge/compilation command)
         const std::string output_name = batch_output_name(edge);
         outputs.push_back(output_name);
+
+        /// Files the original ninja build edge produces when it runs
         json edge_outputs = json::array();
         for (const auto* output : edge->outputs_)
             edge_outputs.push_back(output->path());
+
         const auto parsed = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
+
         database.push_back({
             { "directory", (source_root / build_relative).lexically_normal().string() },
+
+            /// TODO: Pass this to nixja-scan-deps as -C and get rid of this key
             { "nixja_directory", build_relative.generic_string() },
+
+            /// Inputs found by parsing the command
             { "nixja_inputs", parsed.inputSrcs },
             { "file", edge->inputs_.front()->path() },
             { "output", edge->outputs_.front()->path() },
@@ -522,13 +539,25 @@ Result<void> process_dynamic_edges(
                 continue;
             const fs::path destination = (build_relative / path).lexically_normal();
             const std::string reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
-            linkPhase += fmt::format("mkdir -p \"$NIX_BUILD_TOP/{}\"; ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ", destination.parent_path().string(), reference, destination.string());
+            linkPhase += fmt::format(
+                // create all the directories up to destination path
+                "mkdir -p \"$NIX_BUILD_TOP/{}\"; "
+                // -sfn ensures that ln doesn't fail if the destination already exists
+                "ln -sfn \"{}\" \"$NIX_BUILD_TOP/{}\"; ",
+                destination.parent_path().string(),
+                reference,
+                destination.string());
         }
     }
+
+    // Add the database to the nix store
     const std::string data = database.dump();
     nix::StringSource source(data);
     const auto db = store->addToStoreFromDump(source, "nixja-compile-commands.json", nix::FileSerialisationMethod::Flat, nix::ContentAddressMethod::Raw::Flat);
     const std::string db_path = store->printStorePath(db);
+
+    spdlog::debug("Creating compilation database at {}", db_path);
+
     const DerivationSpec spec {
         .name = "compile-batch",
         .storeNamePrefix = "nixja-gen",
