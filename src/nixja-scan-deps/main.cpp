@@ -23,6 +23,7 @@
 
 #include "common.hpp"
 #include "dependency_parser.hpp"
+#include "logging.hpp"
 
 namespace fs = std::filesystem;
 
@@ -81,6 +82,7 @@ Dependencies local_dependencies(
 // clang-scan-deps needs absolute working directories, which are only known
 // after the source tree has been reconstructed in the builder.
 int main(int argc, char* argv[]) {
+    init_logging("nixja-scan-deps", spdlog::level::debug);
     if (argc != 2) {
         std::cerr << "Usage: nixja-scan-deps COMPILATION_DATABASE\n";
         return 1;
@@ -94,6 +96,8 @@ int main(int argc, char* argv[]) {
         json database = json::parse(input);
         if (!database.is_array() || database.empty())
             throw std::runtime_error("Compilation database must be a non-empty array");
+        spdlog::info("Scanning dependencies for {} compilation commands", database.size());
+        spdlog::debug("Compilation database: {}; source root: {}", argv[1], source_root.string());
 
         const fs::path configured_task_path = NIXJA_TASK_PATH;
         const fs::path task_path = configured_task_path.is_absolute()
@@ -153,6 +157,7 @@ int main(int argc, char* argv[]) {
         }
         const std::string scan_command = fmt::format(
             "clang-scan-deps -format=make -compilation-database={} ", tmp_name);
+        spdlog::debug("Running {}", scan_command);
         FILE* pipe = popen(scan_command.c_str(), "r");
         if (!pipe)
             throw std::runtime_error("Cannot start clang-scan-deps");
@@ -164,6 +169,7 @@ int main(int argc, char* argv[]) {
         if (status == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
             throw std::runtime_error("clang-scan-deps failed");
         const auto dependency_map = parse_makefile(output);
+        spdlog::debug("Parsed dependency results for {} targets", dependency_map.size());
 
         nix::experimentalFeatureSettings.experimentalFeatures.set(
             "ca-derivations dynamic-derivations");
@@ -190,6 +196,7 @@ int main(int argc, char* argv[]) {
             fs::current_path(directory);
             const auto deps = local_dependencies(found->second, store, source_root);
             fs::current_path(source_root);
+            spdlog::debug("Target {}: {} local dependencies, {} store dependencies", target, deps.local.size(), deps.store.size());
             const auto files = add_dependencies_to_store(deps.local, store, source_root, directory);
             TaskSpec task {
                 .inputs = files,
@@ -227,10 +234,12 @@ int main(int argc, char* argv[]) {
             if (!destination)
                 throw std::runtime_error("Missing Nix output variable: " + name);
             fs::copy_file(store->printStorePath(*drv), destination);
+            spdlog::debug("Wrote derivation for {} to {}", target, destination);
         }
+        spdlog::info("Generated {} compilation derivations", database.size());
         return 0;
     } catch (const std::exception& error) {
-        std::cerr << "nixja-scan-deps: " << error.what() << '\n';
+        spdlog::error("{}", error.what());
         return 1;
     }
 }
