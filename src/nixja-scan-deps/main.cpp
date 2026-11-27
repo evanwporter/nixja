@@ -22,6 +22,7 @@
 
 #include "ClangScanDeps.hpp"
 #include "common.hpp"
+#include "compilation_database.hpp"
 #include "dependency_parser.hpp"
 #include "logging.hpp"
 
@@ -104,20 +105,13 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
             entry["directory"] = directory.lexically_normal().string();
         }
 
-        // Pass the entire database to a single clang-scan-deps invocation.
-        char tmp_name[] = "/tmp/nixja-compdb-XXXXXX";
-        int fd = mkstemp(tmp_name);
-        if (fd < 0)
-            return Err("Cannot create temporary compilation database");
-
-        close(fd);
+        // Adapt the database in memory for a single clang-scan-deps invocation.
         struct TempFile {
             const char* name;
             ~TempFile() { unlink(name); }
-        } temp { tmp_name };
+        };
+        json scan_database = database;
         {
-            std::ofstream file(tmp_name);
-            json scan_database = database;
             for (auto& entry : scan_database) {
                 // Force a unique dependency target for each entry, even if
                 // the original command specifies its own -MT or -MQ.
@@ -127,22 +121,6 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                 llvm::cl::TokenizeGNUCommandLine(entry.at("command").get<std::string>(), saver, args);
                 if (args.empty())
                     return Err("Compilation command is empty");
-
-                // Replace the MT and MQ flags
-                json scan_args = json::array();
-                for (size_t i = 0; i < args.size(); ++i) {
-                    const std::string_view arg(args[i]);
-                    if (arg == "-MT" || arg == "-MQ") {
-                        if (i + 1 < args.size())
-                            ++i;
-                        continue;
-                    }
-                    if (arg.starts_with("-MT") || arg.starts_with("-MQ"))
-                        continue;
-                    scan_args.push_back(arg);
-                }
-                scan_args.push_back("-MQ");
-                scan_args.push_back(entry.at("output"));
 
                 // HACK: This is super hacky
                 // Ideally we set C_INCLUDE_PATH & CXX_INCLUDE_PATH in a wrapper script
@@ -161,21 +139,14 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                         llvm::SmallVector<const char*> wrapper_args;
                         llvm::cl::TokenizeGNUCommandLine(flags, saver, wrapper_args);
                         for (const char* arg : wrapper_args)
-                            scan_args.push_back(arg);
+                            args.push_back(arg);
                     }
                     break;
                 }
 
                 entry.erase("command");
-                entry["arguments"] = std::move(scan_args);
-                entry.erase("nixja_output");
-                entry.erase("nixja_outputs");
-                entry.erase("nixja_directory");
-                entry.erase("nixja_inputs");
+                entry["arguments"] = std::move(args);
             }
-            file << scan_database.dump();
-            if (!file)
-                return Err("Cannot write compilation database");
         }
         char output_name[] = "/tmp/nixja-deps-XXXXXX";
         int output_fd = mkstemp(output_name);
@@ -183,7 +154,7 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
             return Err("Cannot create temporary dependency output");
         close(output_fd);
         TempFile output_file { output_name };
-        if (clang_scan_deps(tmp_name, output_name) != 0)
+        if (clang_scan_deps(std::make_unique<NixjaCompilationDatabase>(scan_database), output_name) != 0)
             return Err("clang-scan-deps failed");
         std::ifstream scan_output(output_name);
         if (!scan_output)

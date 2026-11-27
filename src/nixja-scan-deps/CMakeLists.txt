@@ -18,6 +18,7 @@ target_include_directories(clang-scan-deps-lib
     PUBLIC "${CMAKE_SOURCE_DIR}/external/clang-scan-deps"
     PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
 target_link_libraries(clang-scan-deps-lib PUBLIC clang-cpp LLVM)
+target_include_directories(nixja-scan-deps PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
 
 target_link_libraries(nixja-scan-deps PRIVATE
     nixja-common

@@ -1,5 +1,8 @@
 #pragma once
 
 #include <string>
+#include <memory>
 
-int clang_scan_deps(const std::string& compilation_database, const std::string& output_file);
+namespace clang::tooling { class CompilationDatabase; }
+
+int clang_scan_deps(std::unique_ptr<clang::tooling::CompilationDatabase> compilation_database, const std::string& output_file);

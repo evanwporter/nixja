@@ -790,12 +790,11 @@ getCompilationDatabase(int argc, char** argv, std::string& ErrorMessage) {
         FEOpts.Inputs[0].getFile(), OutputFile, CommandLine);
 }
 
-int clang_scan_deps_main(int argc, char** argv, const llvm::ToolContext&) {
+int clang_scan_deps_main(int argc, char** argv, std::unique_ptr<tooling::CompilationDatabase> Compilations) {
     llvm::InitializeAllTargetInfos();
-    std::string ErrorMessage;
-    std::unique_ptr<tooling::CompilationDatabase> Compilations = getCompilationDatabase(argc, argv, ErrorMessage);
+    ParseArgs(argc, argv);
     if (!Compilations) {
-        llvm::errs() << ErrorMessage << "\n";
+        llvm::errs() << "Missing compilation database\n";
         return 1;
     }
 
@@ -1125,13 +1124,11 @@ int clang_scan_deps_main(int argc, char** argv, const llvm::ToolContext&) {
     return HadErrors;
 }
 
-int clang_scan_deps(const std::string& compilation_database, const std::string& output_file) {
-    std::string database_arg = "-compilation-database=" + compilation_database;
+int clang_scan_deps(std::unique_ptr<tooling::CompilationDatabase> compilation_database, const std::string& output_file) {
     std::string output_path = output_file;
     char tool_name[] = "clang-scan-deps";
     char format[] = "-format=make";
     char output[] = "-o";
-    char* args[] = { tool_name, format, database_arg.data(), output, output_path.data() };
-    llvm::ToolContext context { tool_name, nullptr, false };
-    return clang_scan_deps_main(5, args, context);
+    char* args[] = { tool_name, format, output, output_path.data() };
+    return clang_scan_deps_main(4, args, std::move(compilation_database));
 }
