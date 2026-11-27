@@ -1,21 +1,35 @@
 #include "common.hpp"
 
+#include <cctype>
 #include <filesystem>
-
-#include <fmt/format.h>
 
 #include <nix/store/derivations.hh>
 #include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
 
+// macro conflict between spdlog and nix
+#ifdef debug
+#undef debug
+#endif
+
+#include <spdlog/spdlog.h>
+
+#include <fmt/format.h>
+#include <fmt/ranges.h>
+
 namespace fs = std::filesystem;
 
 std::string nixja_store_name(const std::string_view name, const std::string_view prefix) {
+    std::string result(name);
+    for (char& c : result) {
+        const auto ch = static_cast<unsigned char>(c);
+        if (!std::isalnum(ch) && std::string_view("+-._?=").find(c) == std::string_view::npos)
+            c = '_';
+    }
     const std::string prefix_with_separator = std::string(prefix) + "-";
-    if (name.starts_with(prefix_with_separator))
-        return std::string(name);
-
-    return prefix_with_separator + std::string(name);
+    if (result.starts_with(prefix_with_separator))
+        return result;
+    return prefix_with_separator + result;
 }
 
 /// TODO: think about moving this out of the header file
@@ -57,9 +71,13 @@ Result<nix::Derivation> buildDerivation(
     env["linkPhase"] = spec.linkPhase;
     env["buildPhase"] = spec.buildPhase;
     env["installPhase"] = spec.installPhase;
-    env["outputs"] = "out";
+    env["outputs"] = fmt::format("{}", fmt::join(spec.outputs, " "));
     env["requiredSystemFeatures"] = "recursive-nix";
-    env["out"] = nix::hashPlaceholder("out");
+    json outputs = json::object();
+    for (const auto& name : spec.outputs) {
+        env[name] = nix::hashPlaceholder(name);
+        outputs[name] = { { "method", spec.outputMethod }, { "hashAlgo", "sha256" } };
+    }
 
     json inputSrcs = json::array({
         bash.filename().string(),
@@ -92,12 +110,7 @@ Result<nix::Derivation> buildDerivation(
                         { "srcs", inputSrcs },
                         { "drvs", spec.inputDrvs },
                     } },
-        { "outputs", {
-                         { "out", {
-                                      { "method", spec.outputMethod },
-                                      { "hashAlgo", "sha256" },
-                                  } },
-                     } },
+        { "outputs", outputs },
     };
 
     return nix::Derivation::parseJsonAndValidate(*store, drv);
@@ -108,7 +121,11 @@ Result<nix::StorePath> writeDerivation(
     const DerivationSpec& spec) {
 
     const auto derivation = TRY(buildDerivation(store, spec));
-    return store->writeDerivation(derivation);
+    const auto store_path = store->writeDerivation(derivation);
+
+    spdlog::debug("Writing derivation too /nix/store/{}", store_path.to_string());
+
+    return store_path;
 }
 
 std::string exec(const char* cmd) {
@@ -166,27 +183,24 @@ std::string arguments_after_separator(int argc, char* argv[]) {
     return result.str();
 }
 
+static std::string shell_quote(std::string_view value) {
+    std::string result = "'";
+    for (char c : value)
+        result += c == '\'' ? "'\\''" : std::string(1, c);
+    return result + "'";
+}
+
 std::string make_task_command(const TaskSpec& spec, const fs::path& task_command) {
     std::string inputs;
-    for (const auto& input : spec.inputs) {
-        inputs += fmt::format("{}:{} ", input.source_store_path.string(), input.file_relative.string());
-    }
+    for (const auto& input : spec.inputs)
+        inputs += shell_quote(input.source_store_path.string() + ":" + input.file_relative.string()) + " ";
 
     std::string outputs;
-    for (const auto& output : spec.outputs) {
-        outputs += fmt::format("{} ", output.string());
-    }
+    for (const auto& output : spec.outputs)
+        outputs += shell_quote(output.string()) + " ";
 
-    std::string input_directory;
-    if (spec.source_store_path.has_value())
-        input_directory = fmt::format(" -d {}", spec.source_store_path->string());
-
-    return fmt::format(
-        "{} -i {} -o {}{} -C {} -- {}",
-        task_command.string(),
-        inputs,
-        outputs,
-        input_directory,
-        spec.build_relative.string(),
-        spec.command);
+    const std::string input_directory = spec.source_store_path.has_value()
+        ? " -d " + shell_quote(spec.source_store_path->string())
+        : "";
+    return fmt::format("{} -i {} -o {}{} -C {} -- {}", shell_quote(task_command.string()), inputs, outputs, input_directory, shell_quote(spec.build_relative.string()), shell_quote(spec.command));
 }

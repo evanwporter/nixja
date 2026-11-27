@@ -1,25 +1,48 @@
-add_executable(nixja
-    ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/nixja_gen.cpp
+# ==============================================================================
+#  nixja
+# ==============================================================================
+
+add_executable(nixja main.cpp)
+
+target_link_libraries(nixja PRIVATE libnixja argparse::argparse)
+target_compile_definitions(nixja PRIVATE NIXJA_VERSION="${NIXJA_VERSION}")
+
+# ==============================================================================
+#  libnixja
+# ==============================================================================
+
+add_library(libnixja STATIC
+    nixja.cpp
+    nixja_gen.cpp
 )
 
-target_compile_options(nixja PRIVATE -Uunix)
+set_target_properties(libnixja PROPERTIES OUTPUT_NAME nixja)
 
-target_link_libraries(nixja PUBLIC
+target_sources(libnixja PRIVATE
+    $<TARGET_OBJECTS:libninja>
+    $<TARGET_OBJECTS:libninja-re2c>
+)
+
+target_compile_options(libnixja PRIVATE -Uunix)
+
+target_link_libraries(libnixja PUBLIC
     nixja-common
-    fmt::fmt
-    spdlog::spdlog
-    PkgConfig::NIX_STORE
-    nlohmann_json::nlohmann_json
-    argparse::argparse
     libninja
     libninja-re2c
     clangDriver
     clangBasic
+    clangTooling
     LLVMSupport
 )
 
-target_precompile_headers(nixja PRIVATE
+target_include_directories(libnixja PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_SOURCE_DIR}/external/ninja/src
+    ${LLVM_INCLUDE_DIRS}
+    ${CLANG_INCLUDE_DIRS}
+)
+
+target_precompile_headers(libnixja PRIVATE
     <nlohmann/json.hpp>
     <nix/main/shared.hh>
     <nix/store/derivations.hh>
@@ -30,8 +53,7 @@ target_precompile_headers(nixja PRIVATE
     <nix/util/source-accessor.hh>
 )
 
-target_compile_definitions(nixja PRIVATE
-    NIXJA_VERSION="${NIXJA_VERSION}"
+target_compile_definitions(libnixja PRIVATE
     NIXJA_SCAN_DEPS_PATH="${nixjaScanDeps}"
     NIXJA_TASK_PATH="${nixjaTask}"
     NIX_STORE_PACKAGE_PATH="${NIX_STORE_PACKAGE_PATH}"
@@ -41,10 +63,4 @@ target_compile_definitions(nixja PRIVATE
     CC_PACKAGE_PATH="${CC_PACKAGE_PATH}"
     CLANG_PACKAGE_PATH="${CLANG_PACKAGE_PATH}"
     LLVM_PACKAGE_PATH="${LLVM_PACKAGE_PATH}"
-)
-
-target_include_directories(nixja PRIVATE
-    ${CMAKE_SOURCE_DIR}/external/ninja/src
-    ${LLVM_INCLUDE_DIRS}
-    ${CLANG_INCLUDE_DIRS}
 )

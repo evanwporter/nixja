@@ -6,11 +6,6 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_program(CCACHE_PROGRAM ccache)
-if(CCACHE_PROGRAM)
-    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
-endif()
-
 set(NINJA_BUILD_BINARY OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
@@ -26,6 +21,9 @@ find_package(argparse CONFIG REQUIRED)
 find_package(Clang CONFIG REQUIRED)
 
 add_subdirectory(external/ninja)
+set_target_properties(libninja libninja-re2c PROPERTIES
+    INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF
+)
 add_subdirectory(external/expected-fs)
 add_subdirectory(external/libpatchelf)
 
@@ -34,24 +32,26 @@ add_subdirectory(src/nixja)
 add_subdirectory(src/nixja-scan-deps)
 add_subdirectory(src/nixja-task)
 
-function(add_nixja_hardlinks dir)
-    foreach(target IN ITEMS nixja nixja-scan-deps nixja-task)
-        list(APPEND HARDLINK_COMMANDS
-            COMMAND ${CMAKE_COMMAND} -E rm -f "${dir}/${target}"
-            COMMAND ${CMAKE_COMMAND} -E create_hardlink
-                "$<TARGET_FILE:${target}>" "${dir}/${target}"
-        )
-    endforeach()
+option(NIXJA_BUILD_TESTS "Build nixja tests" ON)
+if(NIXJA_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
 
-    set(HARDLINK_COMMANDS "${HARDLINK_COMMANDS}" PARENT_SCOPE)
-endfunction()
-
-set(HARDLINK_COMMANDS)
-
-add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/data")
+set(EXAMPLE_BINARIES)
+foreach(target IN ITEMS nixja nixja-scan-deps nixja-task)
+    set(example_binary "${CMAKE_SOURCE_DIR}/tests/data/${target}")
+    add_custom_command(
+        OUTPUT "${example_binary}"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${example_binary}"
+        COMMAND ${CMAKE_COMMAND} -E create_hardlink
+            "$<TARGET_FILE:${target}>" "${example_binary}"
+        DEPENDS ${target}
+        VERBATIM
+    )
+    list(APPEND EXAMPLE_BINARIES "${example_binary}")
+endforeach()
 
 add_custom_target(refresh-example-binaries ALL
-    ${HARDLINK_COMMANDS}
-    DEPENDS nixja nixja-scan-deps
-    VERBATIM
+    DEPENDS ${EXAMPLE_BINARIES}
 )

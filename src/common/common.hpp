@@ -113,6 +113,9 @@ struct DerivationSpec {
     /// `nar` or `text`
     std::string outputMethod;
 
+    /// Names of the derivation outputs.
+    std::vector<std::string> outputs = { "out" };
+
     json inputSrcs = json::array();
     json inputDrvs = json::object();
 
@@ -152,6 +155,8 @@ Result<nix::StorePath> writeDerivation(
     const nix::ref<nix::Store>& store,
     const DerivationSpec& spec);
 
+/// Converts a name to stomething we can do the nix store. This includes converting `/` to `_`,
+/// and adding the prefix to the name
 std::string nixja_store_name(std::string_view name, std::string_view prefix);
 
 /// Execute shell command and capture stdout
@@ -168,7 +173,7 @@ Result<std::filesystem::path> parse_which(
 /// TODO: Combine more efficiently with other cmd line parsing
 std::string arguments_after_separator(int argc, char* argv[]);
 
-/// Add local dependencies to the Nix store, preserving their paths
+/// Add local dependencies to the Nix store. Preserves their paths
 /// relative to the source root.
 template <std::ranges::input_range Range>
 std::vector<StoreFile> add_dependencies_to_store(

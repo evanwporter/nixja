@@ -41,35 +41,39 @@
 			corePath = final.lib.makeBinPath (final.corePackages ++ [final.llvmPackages_22.clang]);
 
 			# Builder for a single scanned Ninja edge.
-			nixja-task = final.stdenv.mkDerivation {
-				name = "nixja-task";
-				src = self;
+			nixja-task =
+				final.stdenv.mkDerivation {
+					name = "nixja-task";
+					src = self;
 
-				nativeBuildInputs = final.corePackages ++ [
-					final.cmake
-					final.pkg-config
-				];
+					nativeBuildInputs =
+						final.corePackages
+						++ [
+							final.cmake
+							final.pkg-config
+						];
 
-				buildInputs = [
-					final.argparse
-					final.fmt
-					final.spdlog
-					final.libblake3
-					final.nlohmann_json
-					final.nix
-					final.llvmPackages_22.llvm
-					final.llvmPackages_22.clang
-					final.llvmPackages_22.clang-unwrapped
-				];
+					buildInputs = [
+						final.argparse
+						final.fmt
+						final.spdlog
+						final.libblake3
+						final.nlohmann_json
+						final.nix
+						final.llvmPackages_22.llvm
+						final.llvmPackages_22.clang
+						final.llvmPackages_22.clang-unwrapped
+					];
 
-				cmakeBuildFlags = [ "--target" "nixja-task" ];
+					buildFlags = ["nixja-task"];
+					cmakeFlags = ["-DNIXJA_BUILD_TESTS=OFF"];
 
-				installPhase = ''
-					runHook preInstall
-					install -Dm755 src/nixja-task/nixja-task "$out/bin/nixja-task"
-					runHook postInstall
-				'';
-			};
+					installPhase = ''
+            					runHook preInstall
+            					install -Dm755 src/nixja-task/nixja-task "$out/bin/nixja-task"
+            					runHook postInstall
+          '';
+				};
 
 			# C++ dependency scanner
 			nixja-scan-deps =
@@ -99,8 +103,10 @@
 					];
 
 					cmakeFlags = [
+						"-DNIXJA_BUILD_TESTS=OFF"
 						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
 					];
+					buildFlags = ["nixja-scan-deps"];
 
 					installPhase = ''
             						runHook preInstall
@@ -109,8 +115,33 @@
           '';
 
 					postFixup = ''
+                                    # Match the system include environment used by nixpkgs' clang tools.
+                                    includePaths() {
+                                        local language="$1" path="" after="" flag
+                                        shift
+                                        while (( $# )); do
+                                            flag="$1"
+                                            shift
+                                            case "$flag" in
+                                                -isystem) path="''${path:+$path:}$1"; shift ;;
+                                                -cxx-isystem)
+                                                    if [[ "$language" == c++ ]]; then
+                                                        path="''${path:+$path:}$1"
+                                                    fi
+                                                    shift ;;
+                                                -idirafter) after="''${after:+$after:}$1"; shift ;;
+                                            esac
+                                        done
+                                        printf '%s' "''${path}''${path:+''${after:+:}}''${after}"
+                                    }
+                                    libcFlags=$(cat ${final.llvmPackages_22.clang}/nix-support/libc-cflags)
+                                    cxxFlags=$(cat ${final.llvmPackages_22.clang}/nix-support/libcxx-cxxflags)
+                                    cIncludes=$(includePaths c $libcFlags)
+                                    cxxIncludes=$(includePaths c++ $cxxFlags $libcFlags)
             						wrapProgram $out/bin/nixja-scan-deps \
-            							--prefix PATH : ${final.corePath}
+            							--prefix PATH : ${final.corePath} \
+                                                        --prefix C_INCLUDE_PATH : "$cIncludes" \
+                                                        --prefix CPLUS_INCLUDE_PATH : "$cxxIncludes"
           '';
 				};
 
@@ -141,12 +172,10 @@
 						final.llvmPackages_22.clang-unwrapped
 					];
 
-					cmakeBuildFlags = [
-						"--target"
-						"nixja"
-					];
+					buildFlags = ["nixja"];
 
 					cmakeFlags = [
+						"-DNIXJA_BUILD_TESTS=OFF"
 						"-DnixjaScanDeps=${final.nixja-scan-deps}/bin/nixja-scan-deps"
 						"-DnixjaTask=${final.nixja-task}/bin/nixja-task"
 					];
@@ -220,9 +249,9 @@
 											nlohmann_json
 											pkg-config
 											fmt
-											ccache
 											argparse
 											spdlog
+											gtest
 
 											# Nix
 											nix
