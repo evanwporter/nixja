@@ -30,5 +30,12 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    return nixja(program.get<std::string>("target"), program.get<std::string>("-C"));
+    const auto result = nixja(program.get<std::string>("target"), program.get<std::string>("-C"));
+
+    if (!result.has_value()) {
+        spdlog::error(result.error());
+        return 1;
+    }
+
+    return 0;
 }

@@ -2,10 +2,10 @@ find_package(GTest REQUIRED)
 
 add_executable(nixja-tests
     ${CMAKE_CURRENT_SOURCE_DIR}/test_compile_command.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/test_dependency_parser.cpp
 )
 
-target_include_directories(nixja-tests PRIVATE ${CMAKE_SOURCE_DIR}/src/nixja-scan-deps)
+target_include_directories(nixja-tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/nixja-scan-deps)
 
 target_link_libraries(nixja-tests PRIVATE
     libnixja

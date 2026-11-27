@@ -3,4 +3,6 @@
 #include <filesystem>
 #include <string>
 
-int nixja(const std::string& target, const std::filesystem::path& requested_dir);
+#include "common.hpp"
+
+Result<void> nixja(const std::string& target, const std::filesystem::path& requested_dir);

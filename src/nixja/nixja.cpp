@@ -1,5 +1,4 @@
 #include <filesystem>
-#include <iostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -54,7 +53,7 @@ void run_command(const std::vector<std::string>& args) {
 // TODO: allow specifying a store that's not /nix/store
 // TODO: Test if I can run this in a standard nix derivation as if it was ninja or something
 // TODO: Add the -C arg like ninja -C build
-int nixja(const std::string& target, const fs::path& requested_dir) {
+Result<void> nixja(const std::string& target, const fs::path& requested_dir) {
     /// The directory where nixja is called from, and the directory that we
     /// add to the store as `source`
     const fs::path source_root = fs::current_path();
@@ -65,31 +64,21 @@ int nixja(const std::string& target, const fs::path& requested_dir) {
     /// Also the directory where the `build.ninja` file is located.
     const fs::path build_dir = fs::canonical(source_root / requested_dir, ec);
 
-    if (ec) {
-        std::cerr << "Invalid build directory specified with -C "
-                  << requested_dir << ": " << ec.message() << '\n';
-        return 1;
-    }
+    if (ec)
+        return Err("Invalid build directory specified with -C {}: {}", requested_dir.string(), ec.message());
 
     /// The build directory relative to the source_root
     const fs::path build_relative = build_dir.lexically_relative(source_root);
 
     // Make sure that passed build_dir is inside the source_root
-    if (build_relative.empty() || build_relative.is_absolute() || (*build_relative.begin() == "..")) {
-        std::cerr << "Build directory must be inside the source root\n";
-        return 1;
-    }
+    if (build_relative.empty() || build_relative.is_absolute() || (*build_relative.begin() == ".."))
+        return Err("Build directory must be inside the source root");
 
-    const auto drv_result = nixja_gen(target, source_root, build_dir);
-
-    /// TODO: Idk if I like this macro
-    MAIN_TRY(drv_result);
-
-    const auto drv_path = std::move(drv_result.value());
+    const auto drv_path = TRY(nixja_gen(target, source_root, build_dir));
 
     // Building this one derivation causes Nix to resolve the generator's
     // dynamic output and build the derivation it emits.
     run_command({ "nix", "build", "--print-build-logs", "--extra-experimental-features", "ca-derivations dynamic-derivations", "--show-trace", "--out-link", "result", drv_path + "^out" });
 
-    return 0;
+    return { };
 }
