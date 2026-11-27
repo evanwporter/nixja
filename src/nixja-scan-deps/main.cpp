@@ -20,6 +20,7 @@
 #include <llvm/Support/StringSaver.h>
 #include <nlohmann/json.hpp>
 
+#include "ClangScanDeps.hpp"
 #include "common.hpp"
 #include "dependency_parser.hpp"
 #include "logging.hpp"
@@ -124,6 +125,8 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                 llvm::StringSaver saver(allocator);
                 llvm::SmallVector<const char*> args;
                 llvm::cl::TokenizeGNUCommandLine(entry.at("command").get<std::string>(), saver, args);
+                if (args.empty())
+                    return Err("Compilation command is empty");
 
                 // Replace the MT and MQ flags
                 json scan_args = json::array();
@@ -141,6 +144,26 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                 scan_args.push_back("-MQ");
                 scan_args.push_back(entry.at("output"));
 
+                // Clang's in-process driver does not run Nix compiler wrappers.
+                // Supply the wrapper's implicit headers and resource directory.
+                const fs::path compiler_name = fs::path(args.front()).filename();
+                for (const auto& item : entry.value("nixja_inputs", json::array())) {
+                    const fs::path wrapper = item.get<std::string>();
+                    if (!fs::exists(wrapper / "bin" / compiler_name))
+                        continue;
+                    for (const auto* name : { "cc-cflags", "libc-cflags", "libcxx-cxxflags" }) {
+                        std::ifstream flags_file(wrapper / "nix-support" / name);
+                        if (!flags_file)
+                            continue;
+                        const std::string flags((std::istreambuf_iterator<char>(flags_file)), { });
+                        llvm::SmallVector<const char*> wrapper_args;
+                        llvm::cl::TokenizeGNUCommandLine(flags, saver, wrapper_args);
+                        for (const char* arg : wrapper_args)
+                            scan_args.push_back(arg);
+                    }
+                    break;
+                }
+
                 entry.erase("command");
                 entry["arguments"] = std::move(scan_args);
                 entry.erase("nixja_output");
@@ -152,10 +175,18 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
             if (!file)
                 return Err("Cannot write compilation database");
         }
-        const std::string scan_command = fmt::format(
-            "clang-scan-deps -format=make -compilation-database={} ", tmp_name);
-        spdlog::debug("Running {}", scan_command);
-        const auto output = exec(scan_command.c_str());
+        char output_name[] = "/tmp/nixja-deps-XXXXXX";
+        int output_fd = mkstemp(output_name);
+        if (output_fd < 0)
+            return Err("Cannot create temporary dependency output");
+        close(output_fd);
+        TempFile output_file { output_name };
+        if (clang_scan_deps(tmp_name, output_name) != 0)
+            return Err("clang-scan-deps failed");
+        std::ifstream scan_output(output_name);
+        if (!scan_output)
+            return Err("Cannot read dependency output");
+        const std::string output((std::istreambuf_iterator<char>(scan_output)), { });
 
         const auto dependency_map = parse_makefile(output);
 
