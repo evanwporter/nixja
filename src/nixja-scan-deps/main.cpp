@@ -278,6 +278,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // TODO: I use the following pattern a lot. I could replace it with a macro
     const auto result = nixja_scan_deps(argv[1]);
 
     if (!result.has_value()) {

@@ -86,16 +86,6 @@ decltype(auto) unwrap_result(std::expected<T, E>& result) {
     unwrap_result(result);                                                                  \
 })
 
-/// Use only from an int-returning main function.
-#define MAIN_TRY(expr)                           \
-    do {                                         \
-        auto&& result = (expr);                  \
-        if (!result) {                           \
-            std::cerr << result.error() << '\n'; \
-            return 1;                            \
-        }                                        \
-    } while (false)
-
 struct DerivationSpec {
     std::string name;
     /// Namespace for store objects created by the executable producing this derivation.
