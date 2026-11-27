@@ -115,8 +115,33 @@
           '';
 
 					postFixup = ''
+                                    # Match the system include environment used by nixpkgs' clang tools.
+                                    includePaths() {
+                                        local language="$1" path="" after="" flag
+                                        shift
+                                        while (( $# )); do
+                                            flag="$1"
+                                            shift
+                                            case "$flag" in
+                                                -isystem) path="''${path:+$path:}$1"; shift ;;
+                                                -cxx-isystem)
+                                                    if [[ "$language" == c++ ]]; then
+                                                        path="''${path:+$path:}$1"
+                                                    fi
+                                                    shift ;;
+                                                -idirafter) after="''${after:+$after:}$1"; shift ;;
+                                            esac
+                                        done
+                                        printf '%s' "''${path}''${path:+''${after:+:}}''${after}"
+                                    }
+                                    libcFlags=$(cat ${final.llvmPackages_22.clang}/nix-support/libc-cflags)
+                                    cxxFlags=$(cat ${final.llvmPackages_22.clang}/nix-support/libcxx-cxxflags)
+                                    cIncludes=$(includePaths c $libcFlags)
+                                    cxxIncludes=$(includePaths c++ $cxxFlags $libcFlags)
             						wrapProgram $out/bin/nixja-scan-deps \
-            							--prefix PATH : ${final.corePath}
+            							--prefix PATH : ${final.corePath} \
+                                                        --prefix C_INCLUDE_PATH : "$cIncludes" \
+                                                        --prefix CPLUS_INCLUDE_PATH : "$cxxIncludes"
           '';
 				};
 
