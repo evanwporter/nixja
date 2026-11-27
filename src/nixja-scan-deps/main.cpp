@@ -1,4 +1,3 @@
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -23,7 +22,6 @@
 #include "ClangScanDeps.hpp"
 #include "common.hpp"
 #include "compilation_database.hpp"
-#include "dependency_parser.hpp"
 #include "logging.hpp"
 
 namespace fs = std::filesystem;

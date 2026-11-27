@@ -1,7 +1,15 @@
+# ==============================================================================
+#  nixja
+# ==============================================================================
+
 add_executable(nixja main.cpp)
 
 target_link_libraries(nixja PRIVATE libnixja argparse::argparse)
 target_compile_definitions(nixja PRIVATE NIXJA_VERSION="${NIXJA_VERSION}")
+
+# ==============================================================================
+#  libnixja
+# ==============================================================================
 
 add_library(libnixja STATIC
     nixja.cpp
