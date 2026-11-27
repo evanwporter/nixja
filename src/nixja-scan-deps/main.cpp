@@ -144,6 +144,8 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                 scan_args.push_back("-MQ");
                 scan_args.push_back(entry.at("output"));
 
+                // HACK: This is super hacky
+                // Ideally we set C_INCLUDE_PATH & CXX_INCLUDE_PATH in a wrapper script
                 // Clang's in-process driver does not run Nix compiler wrappers.
                 // Supply the wrapper's implicit headers and resource directory.
                 const fs::path compiler_name = fs::path(args.front()).filename();
