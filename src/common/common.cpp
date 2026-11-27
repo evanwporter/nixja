@@ -3,12 +3,19 @@
 #include <cctype>
 #include <filesystem>
 
-#include <fmt/format.h>
-#include <fmt/ranges.h>
-
 #include <nix/store/derivations.hh>
 #include <nix/store/globals.hh>
 #include <nix/store/store-api.hh>
+
+// macro conflict between spdlog and nix
+#ifdef debug
+#undef debug
+#endif
+
+#include <spdlog/spdlog.h>
+
+#include <fmt/format.h>
+#include <fmt/ranges.h>
 
 namespace fs = std::filesystem;
 
@@ -114,7 +121,11 @@ Result<nix::StorePath> writeDerivation(
     const DerivationSpec& spec) {
 
     const auto derivation = TRY(buildDerivation(store, spec));
-    return store->writeDerivation(derivation);
+    const auto store_path = store->writeDerivation(derivation);
+
+    spdlog::debug("Writing derivation too /nix/store/{}", store_path.to_string());
+
+    return store_path;
 }
 
 std::string exec(const char* cmd) {
