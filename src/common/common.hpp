@@ -173,7 +173,7 @@ Result<std::filesystem::path> parse_which(
 /// TODO: Combine more efficiently with other cmd line parsing
 std::string arguments_after_separator(int argc, char* argv[]);
 
-/// Add local dependencies to the Nix store, preserving their paths
+/// Add local dependencies to the Nix store. Preserves their paths
 /// relative to the source root.
 template <std::ranges::input_range Range>
 std::vector<StoreFile> add_dependencies_to_store(

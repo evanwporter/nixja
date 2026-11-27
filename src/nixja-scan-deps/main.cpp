@@ -20,6 +20,7 @@
 #include <nlohmann/json.hpp>
 
 #include "ClangScanDeps.hpp"
+
 #include "common.hpp"
 #include "compilation_database.hpp"
 #include "logging.hpp"
@@ -103,13 +104,11 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
             entry["directory"] = directory.lexically_normal().string();
         }
 
-        // Adapt the database in memory for a single clang-scan-deps invocation.
-        struct TempFile {
-            const char* name;
-            ~TempFile() { unlink(name); }
-        };
         json scan_database = database;
+
+        // HACK: This entire block is unnecessary if we use the nix build
         {
+            // Add some stuff to each entry of the database
             for (auto& entry : scan_database) {
                 // Force a unique dependency target for each entry, even if
                 // the original command specifies its own -MT or -MQ.
@@ -160,6 +159,11 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
             "ca-derivations dynamic-derivations");
         nix::initLibStore(true);
         const nix::ref<nix::Store> store = nix::openStore();
+
+        // Add `nixja-scan-deps` to the store and gets it path.
+        // HACK: This is unnecessary if we use the nix build
+        // TODO: We need put all of these hacks into their own function that
+        // returns a vector of input srcs
         const fs::path canonical_task = fs::canonical(task_path);
         const fs::path task_command = store->isInStore(canonical_task.string())
             ? canonical_task
@@ -167,7 +171,7 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                   nixja_store_name("nixja-task", "nixja-scan-deps"),
                   nix::makeFSSourceAccessor(canonical_task),
                   nix::ContentAddressMethod::Raw::NixArchive)));
-        const auto [task_store_path, ignored] = store->toStorePath(task_command.string());
+        const auto [task_store_path, _] = store->toStorePath(task_command.string());
 
         for (const auto& [entry, result] :
              std::views::zip(database, scan_results)) {
@@ -192,19 +196,30 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
             fs::current_path(source_root);
 
             spdlog::debug("Target {}: {} local dependencies, {} store dependencies", target, deps.local.size(), deps.store.size());
-            const auto files = add_dependencies_to_store(deps.local, store, source_root, directory);
+            const auto input_files = add_dependencies_to_store(deps.local, store, source_root, directory);
+
             TaskSpec task {
-                .inputs = files,
+                // input_files are passed to nixja-task because its needs to link these files to places
+                // under $NIX_BUILD_TOP
+                .inputs = input_files,
                 .build_relative = relative,
                 .command = entry.at("command").get<std::string>(),
             };
+
             for (const auto& item : entry.at("nixja_outputs"))
                 task.outputs.emplace_back(item.get<std::string>());
+
             std::vector<std::string> inputSrcs;
-            for (const auto& file : files)
+
+            // input files are also added to the input.src so they are available to the derivation
+            for (const auto& file : input_files)
                 inputSrcs.push_back(file.source_store_path.filename().string());
+
+            // HACK: add calculated path to nixja-task to input srcs
             inputSrcs.push_back(fs::path(store->printStorePath(task_store_path)).filename().string());
 
+            /// HACK: We add each library `nixja-task` needs to the derivations input srcs
+            /// This is unnecessary when we build through nix
             for (const auto& path : {
                      NIX_STORE_PACKAGE_PATH,
                      NIX_UTIL_PACKAGE_PATH,
@@ -213,6 +228,8 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                      CC_PACKAGE_PATH })
                 inputSrcs.push_back(fs::path(path).filename().string());
 
+            // Add each system dependency to the derivations input.srcs. These are files located
+            // in the nix store
             for (const auto& path : deps.store)
                 inputSrcs.push_back(fs::path(path).filename().string());
 
@@ -224,7 +241,12 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                 }
             }
 
+            /// The name of the nix derivation output. Like `$out`. Since the derivation has multiple outputs,
+            /// each one needs its own name.
             const std::string name = entry.at("nixja_output").get<std::string>();
+
+            /// The path to our generated derivation. The generated derivation describes how to build the relevant
+            /// Ninja edge.
             const auto drv = TRY(writeDerivation(store, {
                                                             .name = name,
                                                             .storeNamePrefix = "nixja-scan-deps",
@@ -237,11 +259,13 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
             if (!destination)
                 return Err("Missing Nix output variable: " + name);
 
+            // Equivalent to the install phase ($installPhase)
             fs::copy_file(store->printStorePath(drv), destination);
             spdlog::debug("Wrote derivation for {} to {}", target, destination);
         }
         spdlog::info("Generated {} compilation derivations", database.size());
         return { };
+
     } catch (const std::exception& error) {
         return Err(error.what());
     }

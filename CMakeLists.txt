@@ -38,24 +38,20 @@ if(NIXJA_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-function(add_nixja_hardlinks dir)
-    foreach(target IN ITEMS nixja nixja-scan-deps nixja-task)
-        list(APPEND HARDLINK_COMMANDS
-            COMMAND ${CMAKE_COMMAND} -E rm -f "${dir}/${target}"
-            COMMAND ${CMAKE_COMMAND} -E create_hardlink
-                "$<TARGET_FILE:${target}>" "${dir}/${target}"
-        )
-    endforeach()
-
-    set(HARDLINK_COMMANDS "${HARDLINK_COMMANDS}" PARENT_SCOPE)
-endfunction()
-
-set(HARDLINK_COMMANDS)
-
-add_nixja_hardlinks("${CMAKE_SOURCE_DIR}/tests/data")
+set(EXAMPLE_BINARIES)
+foreach(target IN ITEMS nixja nixja-scan-deps nixja-task)
+    set(example_binary "${CMAKE_SOURCE_DIR}/tests/data/${target}")
+    add_custom_command(
+        OUTPUT "${example_binary}"
+        COMMAND ${CMAKE_COMMAND} -E rm -f "${example_binary}"
+        COMMAND ${CMAKE_COMMAND} -E create_hardlink
+            "$<TARGET_FILE:${target}>" "${example_binary}"
+        DEPENDS ${target}
+        VERBATIM
+    )
+    list(APPEND EXAMPLE_BINARIES "${example_binary}")
+endforeach()
 
 add_custom_target(refresh-example-binaries ALL
-    ${HARDLINK_COMMANDS}
-    DEPENDS nixja nixja-scan-deps
-    VERBATIM
+    DEPENDS ${EXAMPLE_BINARIES}
 )
