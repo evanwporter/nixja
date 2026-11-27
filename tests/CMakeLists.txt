@@ -8,7 +8,7 @@ add_executable(nixja-tests
 target_include_directories(nixja-tests PRIVATE ${CMAKE_SOURCE_DIR}/src/nixja-scan-deps)
 
 target_link_libraries(nixja-tests PRIVATE
-    libnixja-gen
+    libnixja
     GTest::gtest_main
     clangTooling
     clangDriver
