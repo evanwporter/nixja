@@ -1,4 +1,3 @@
-#include <array>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -81,23 +80,17 @@ Dependencies local_dependencies(
 
 // clang-scan-deps needs absolute working directories, which are only known
 // after the source tree has been reconstructed in the builder.
-int main(int argc, char* argv[]) {
-    init_logging("nixja-scan-deps", spdlog::level::debug);
-    if (argc != 2) {
-        std::cerr << "Usage: nixja-scan-deps COMPILATION_DATABASE\n";
-        return 1;
-    }
-
+Result<void> nixja_scan_deps(const fs::path& compilation_database) {
     try {
         const fs::path source_root = fs::current_path();
-        std::ifstream input(argv[1]);
+        std::ifstream input(compilation_database);
         if (!input)
             throw std::runtime_error("Cannot open compilation database");
         json database = json::parse(input);
         if (!database.is_array() || database.empty())
             throw std::runtime_error("Compilation database must be a non-empty array");
         spdlog::info("Scanning dependencies for {} compilation commands", database.size());
-        spdlog::debug("Compilation database: {}; source root: {}", argv[1], source_root.string());
+        spdlog::debug("Compilation database: {}; source root: {}", compilation_database.string(), source_root.string());
 
         const fs::path configured_task_path = NIXJA_TASK_PATH;
         const fs::path task_path = configured_task_path.is_absolute()
@@ -114,7 +107,8 @@ int main(int argc, char* argv[]) {
         char tmp_name[] = "/tmp/nixja-compdb-XXXXXX";
         int fd = mkstemp(tmp_name);
         if (fd < 0)
-            throw std::runtime_error("Cannot create temporary compilation database");
+            return Err("Cannot create temporary compilation database");
+
         close(fd);
         struct TempFile {
             const char* name;
@@ -130,6 +124,8 @@ int main(int argc, char* argv[]) {
                 llvm::StringSaver saver(allocator);
                 llvm::SmallVector<const char*> args;
                 llvm::cl::TokenizeGNUCommandLine(entry.at("command").get<std::string>(), saver, args);
+
+                // Replace the MT and MQ flags
                 json scan_args = json::array();
                 for (size_t i = 0; i < args.size(); ++i) {
                     const std::string_view arg(args[i]);
@@ -144,6 +140,7 @@ int main(int argc, char* argv[]) {
                 }
                 scan_args.push_back("-MQ");
                 scan_args.push_back(entry.at("output"));
+
                 entry.erase("command");
                 entry["arguments"] = std::move(scan_args);
                 entry.erase("nixja_output");
@@ -153,22 +150,15 @@ int main(int argc, char* argv[]) {
             }
             file << scan_database.dump();
             if (!file)
-                throw std::runtime_error("Cannot write compilation database");
+                return Err("Cannot write compilation database");
         }
         const std::string scan_command = fmt::format(
             "clang-scan-deps -format=make -compilation-database={} ", tmp_name);
         spdlog::debug("Running {}", scan_command);
-        FILE* pipe = popen(scan_command.c_str(), "r");
-        if (!pipe)
-            throw std::runtime_error("Cannot start clang-scan-deps");
-        std::string output;
-        std::array<char, 4096> buffer;
-        while (fgets(buffer.data(), buffer.size(), pipe))
-            output += buffer.data();
-        const int status = pclose(pipe);
-        if (status == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
-            throw std::runtime_error("clang-scan-deps failed");
+        const auto output = exec(scan_command.c_str());
+
         const auto dependency_map = parse_makefile(output);
+
         spdlog::debug("Parsed dependency results for {} targets", dependency_map.size());
 
         nix::experimentalFeatureSettings.experimentalFeatures.set(
@@ -188,11 +178,11 @@ int main(int argc, char* argv[]) {
             const fs::path directory = entry.at("directory").get<std::string>();
             const fs::path relative = directory.lexically_relative(source_root);
             if (relative.empty() || relative.is_absolute() || *relative.begin() == "..")
-                throw std::runtime_error("Compilation directory is outside the source tree");
+                return Err("Compilation directory is outside the source tree");
             const std::string target = entry.at("output").get<std::string>();
             auto found = dependency_map.find(target);
             if (found == dependency_map.end())
-                throw std::runtime_error("No dependency result for " + target);
+                return Err("No dependency result for " + target);
             fs::current_path(directory);
             const auto deps = local_dependencies(found->second, store, source_root);
             fs::current_path(source_root);
@@ -209,10 +199,18 @@ int main(int argc, char* argv[]) {
             for (const auto& file : files)
                 inputSrcs.push_back(file.source_store_path.filename().string());
             inputSrcs.push_back(fs::path(store->printStorePath(task_store_path)).filename().string());
-            for (const auto& path : { NIX_STORE_PACKAGE_PATH, NIX_UTIL_PACKAGE_PATH, FMT_PACKAGE_PATH, SPDLOG_PACKAGE_PATH, CC_PACKAGE_PATH })
+
+            for (const auto& path : {
+                     NIX_STORE_PACKAGE_PATH,
+                     NIX_UTIL_PACKAGE_PATH,
+                     FMT_PACKAGE_PATH,
+                     SPDLOG_PACKAGE_PATH,
+                     CC_PACKAGE_PATH })
                 inputSrcs.push_back(fs::path(path).filename().string());
+
             for (const auto& path : deps.store)
                 inputSrcs.push_back(fs::path(path).filename().string());
+
             for (const auto& item : entry.value("nixja_inputs", json::array())) {
                 const std::string path = item.get<std::string>();
                 if (store->isInStore(path)) {
@@ -220,26 +218,41 @@ int main(int argc, char* argv[]) {
                     inputSrcs.push_back(fs::path(store->printStorePath(root)).filename().string());
                 }
             }
+
             const std::string name = entry.at("nixja_output").get<std::string>();
-            const auto drv = writeDerivation(store, {
-                                                        .name = name,
-                                                        .storeNamePrefix = "nixja-scan-deps",
-                                                        .buildPhase = make_task_command(task, task_command),
-                                                        .outputMethod = "nar",
-                                                        .inputSrcs = inputSrcs,
-                                                    });
-            if (!drv)
-                throw std::runtime_error(drv.error());
+            const auto drv = TRY(writeDerivation(store, {
+                                                            .name = name,
+                                                            .storeNamePrefix = "nixja-scan-deps",
+                                                            .buildPhase = make_task_command(task, task_command),
+                                                            .outputMethod = "nar",
+                                                            .inputSrcs = inputSrcs,
+                                                        }));
+
             const char* destination = std::getenv(name.c_str());
             if (!destination)
-                throw std::runtime_error("Missing Nix output variable: " + name);
-            fs::copy_file(store->printStorePath(*drv), destination);
+                return Err("Missing Nix output variable: " + name);
+
+            fs::copy_file(store->printStorePath(drv), destination);
             spdlog::debug("Wrote derivation for {} to {}", target, destination);
         }
         spdlog::info("Generated {} compilation derivations", database.size());
-        return 0;
+        return { };
     } catch (const std::exception& error) {
-        spdlog::error("{}", error.what());
+        return Err(error.what());
+    }
+}
+
+int main(int argc, char* argv[]) {
+    init_logging("nixja-scan-deps", spdlog::level::debug);
+    if (argc != 2) {
+        std::cerr << "Usage: nixja-scan-deps COMPILATION_DATABASE\n";
+        return 1;
+    }
+
+    const auto result = nixja_scan_deps(argv[1]);
+
+    if (!result.has_value()) {
+        spdlog::error(result.error());
         return 1;
     }
 }
