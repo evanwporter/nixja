@@ -333,13 +333,17 @@ Result<void> create_derivation(
             const auto& derivation = edge_map[producer->id_];
             auto& input = inputDrvs[derivation.derivation_path];
             if (input.is_null())
-                input = { { "dynamicOutputs", json::object() }, { "outputs", json::array() } };
+                input = {
+                    { "dynamicOutputs", json::object() },
+                    { "outputs", json::array() }
+                };
             const std::string& output = derivation.output_name;
             if (std::find(input["outputs"].begin(), input["outputs"].end(), output) == input["outputs"].end())
                 input["outputs"].push_back(output);
             if (derivation.generates_drv)
                 input["dynamicOutputs"][output] = {
-                    { "dynamicOutputs", json::object() }, { "outputs", json::array({ "out" }) }
+                    { "dynamicOutputs", json::object() },
+                    { "outputs", json::array({ "out" }) }
                 };
         }
     }
