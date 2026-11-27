@@ -43,7 +43,7 @@ struct Dependencies {
 /// Filter out dependencies outside the source root
 /// TODO: Rename since we are no longer obtaining only local deps
 Dependencies local_dependencies(
-    const std::unordered_set<std::string>& dependencies,
+    const std::vector<std::string>& dependencies,
     const nix::ref<nix::Store> store,
     const fs::path& project_root) {
 
@@ -148,22 +148,15 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                 entry["arguments"] = std::move(args);
             }
         }
-        char output_name[] = "/tmp/nixja-deps-XXXXXX";
-        int output_fd = mkstemp(output_name);
-        if (output_fd < 0)
-            return Err("Cannot create temporary dependency output");
-        close(output_fd);
-        TempFile output_file { output_name };
-        if (clang_scan_deps(std::make_unique<NixjaCompilationDatabase>(scan_database), output_name) != 0)
-            return Err("clang-scan-deps failed");
-        std::ifstream scan_output(output_name);
-        if (!scan_output)
-            return Err("Cannot read dependency output");
-        const std::string output((std::istreambuf_iterator<char>(scan_output)), { });
+        const auto scan_results = clang_scan_deps(
+            std::make_unique<NixjaCompilationDatabase>(scan_database));
 
-        const auto dependency_map = parse_makefile(output);
+        if (scan_results.size() != database.size())
+            return Err("Unexpected number of dependency scan results");
 
-        spdlog::debug("Parsed dependency results for {} targets", dependency_map.size());
+        spdlog::debug(
+            "Scanned dependencies for {} compilation commands",
+            scan_results.size());
 
         nix::experimentalFeatureSettings.experimentalFeatures.set(
             "ca-derivations dynamic-derivations");
@@ -178,18 +171,28 @@ Result<void> nixja_scan_deps(const fs::path& compilation_database) {
                   nix::ContentAddressMethod::Raw::NixArchive)));
         const auto [task_store_path, ignored] = store->toStorePath(task_command.string());
 
-        for (const auto& entry : database) {
+        for (const auto& [entry, result] :
+             std::views::zip(database, scan_results)) {
+
             const fs::path directory = entry.at("directory").get<std::string>();
+
             const fs::path relative = directory.lexically_relative(source_root);
+
             if (relative.empty() || relative.is_absolute() || *relative.begin() == "..")
                 return Err("Compilation directory is outside the source tree");
+
             const std::string target = entry.at("output").get<std::string>();
-            auto found = dependency_map.find(target);
-            if (found == dependency_map.end())
-                return Err("No dependency result for " + target);
+
+            if (result.output != target)
+                return Err("Dependency result mismatch for " + target);
+
             fs::current_path(directory);
-            const auto deps = local_dependencies(found->second, store, source_root);
+
+            const auto deps = local_dependencies(
+                result.dependencies, store, source_root);
+
             fs::current_path(source_root);
+
             spdlog::debug("Target {}: {} local dependencies, {} store dependencies", target, deps.local.size(), deps.store.size());
             const auto files = add_dependencies_to_store(deps.local, store, source_root, directory);
             TaskSpec task {
