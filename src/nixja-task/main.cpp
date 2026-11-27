@@ -11,6 +11,7 @@
 
 #include "common.hpp"
 #include "elf.hpp"
+#include "libpatchelf.h"
 
 namespace fs = expected_fs;
 
@@ -124,26 +125,19 @@ Result<void> fixupPhase(
         if (!is_patchelf_compatible(output))
             continue;
 
-        const pid_t child = fork();
+        try {
+            patchelf::ElfFile elf(output);
 
-        if (child == -1)
-            return Err("Failed to fork patchelf");
+            for (const auto& directory : directories)
+                elf.addRPath(directory.string());
 
-        if (child == 0) {
-            execlp(
-                "patchelf",
-                "patchelf",
-                "--set-rpath",
-                rpath.c_str(),
-                output.c_str(),
-                nullptr);
-            _exit(127);
+            elf.save();
+        } catch (const std::exception& error) {
+            return Err(
+                "Failed to patch ELF {}: {}",
+                output.string(),
+                error.what());
         }
-
-        int status = 0;
-
-        if (waitpid(child, &status, 0) == -1 || !WIFEXITED(status) || WEXITSTATUS(status) != 0)
-            return Err("Failed to patch ELF: {}", output.string());
     }
 
     return { };
