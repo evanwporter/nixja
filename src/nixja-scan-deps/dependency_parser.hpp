@@ -20,15 +20,20 @@ inline std::vector<std::string> make_words(std::string_view text) {
             word += '$';
             ++i;
         } else if (c == ' ' || c == '\t' || c == '\r') {
-            if (!word.empty()) { words.push_back(std::move(word)); word.clear(); }
+            if (!word.empty()) {
+                words.push_back(std::move(word));
+                word.clear();
+            }
         } else {
             word += c;
         }
     }
-    if (!word.empty()) words.push_back(std::move(word));
+    if (!word.empty())
+        words.push_back(std::move(word));
     return words;
 }
 
+/// Return a vector
 inline std::unordered_map<std::string, std::unordered_set<std::string>>
 parse_makefile(std::string content) {
     std::unordered_map<std::string, std::unordered_set<std::string>> graph;
@@ -38,10 +43,15 @@ parse_makefile(std::string content) {
     while (std::getline(stream, line)) {
         size_t colon = 0;
         for (; colon < line.size(); ++colon) {
-            if (line[colon] == '\\') { ++colon; continue; }
-            if (line[colon] == ':') break;
+            if (line[colon] == '\\') {
+                ++colon;
+                continue;
+            }
+            if (line[colon] == ':')
+                break;
         }
-        if (colon >= line.size()) continue;
+        if (colon >= line.size())
+            continue;
         const auto targets = make_words(std::string_view(line).substr(0, colon));
         const auto dependencies = make_words(std::string_view(line).substr(colon + 1));
         for (const auto& target : targets)
@@ -49,4 +59,3 @@ parse_makefile(std::string content) {
     }
     return graph;
 }
-
