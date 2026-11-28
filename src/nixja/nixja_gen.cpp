@@ -297,9 +297,13 @@ Result<Command> parseCommand(
 
                 result.inputSrcs.insert(
                     store->printStorePath(storePath));
-            } else {
+            }
+
+            // Executable is relative to the source_root
+            else {
                 const fs::path path_relative = programPath.lexically_relative(source_root);
 
+                // Check if executable is located outside of source_root
                 if (path_relative.empty() || path_relative.is_absolute() || *path_relative.begin() == "..")
                     return Err(
                         "The program ({}) must be either in the "
@@ -308,6 +312,7 @@ Result<Command> parseCommand(
 
                 const fs::path source_file = fs::canonical(programPath);
 
+                // Add the executable to the store (so we can use it as a input.src)
                 const auto stored_file = store->addToStore(
                     nixja_store_name(
                         source_file.filename().string(),
@@ -317,8 +322,8 @@ Result<Command> parseCommand(
 
                 const std::string store_path = store->printStorePath(stored_file);
 
-                // Queue the replacement rather than immediately
-                // modifying the command.
+                // We need to replace the program relative path with its path in the nix store.
+                // Queue the replacement rather than immediately modifying the command.
                 edits.push_back({
                     .start = invocation.program_offset,
                     .end = invocation.program_offset + static_cast<uint32_t>(invocation.program.size()),
@@ -353,7 +358,7 @@ Result<Command> parseCommand(
 
         } else {
 
-            // Bare executable name, e.g. clang++, gcc, python3.
+            // Bare executable name, e.g. clang++, gcc, python3
             const fs::path path = TRY(parse_which(program, store));
 
             const auto [storePath, subPath] = store->toStorePath(path.string());
