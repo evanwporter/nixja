@@ -14,7 +14,7 @@ class CompileCommandTest : public ::testing::Test {
 protected:
     clang::DiagnosticOptions opts;
     llvm::IntrusiveRefCntPtr<clang::DiagnosticsEngine> diagnostics = clang::CompilerInstance::createDiagnostics(
-        *llvm::vfs::getRealFileSystem(), opts);
+        *llvm::vfs::getRealFileSystem(), opts, new clang::IgnoringDiagConsumer());
     clang::driver::Driver driver { "clang++",
                                    llvm::sys::getDefaultTargetTriple(),
                                    *diagnostics };
@@ -61,7 +61,16 @@ TEST_F(CompileCommandTest, ReturnsFalseForNonCompilationCommands) {
 
     for (const auto& args : cases) {
         diagnostics->Reset();
-        EXPECT_FALSE(is_compile_command(driver, args)) << fmt::format(
+
+        llvm::outs().flush();
+        testing::internal::CaptureStdout();
+
+        const bool result = is_compile_command(driver, args);
+
+        llvm::outs().flush();
+        testing::internal::GetCapturedStdout();
+
+        EXPECT_FALSE(result) << fmt::format(
             "{}",
             fmt::join(args, " "));
     }

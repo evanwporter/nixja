@@ -26,6 +26,21 @@
 		forAllSystems = f:
 			nixpkgs.lib.genAttrs systems (system:
 				f (pkgsFor system));
+
+		tree-sitter-bash = pkgs:
+			pkgs.stdenv.mkDerivation {
+				inherit
+					(pkgs.tree-sitter.grammars.tree-sitter-bash)
+					version
+					src
+					;
+
+				pname = "tree-sitter-bash";
+
+				makeFlags = [
+					"PREFIX=$(out)"
+				];
+			};
 	in {
 		overlays.default = final: prev: {
 			corePackages = with final; [
@@ -252,6 +267,8 @@
 											argparse
 											spdlog
 											gtest
+											tree-sitter
+											(tree-sitter-bash pkgs)
 
 											# Nix
 											nix

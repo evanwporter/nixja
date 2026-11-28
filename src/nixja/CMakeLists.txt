@@ -33,6 +33,8 @@ target_link_libraries(libnixja PUBLIC
     clangBasic
     clangTooling
     LLVMSupport
+    PkgConfig::TREE_SITTER
+    PkgConfig::TREE_SITTER_BASH
 )
 
 target_include_directories(libnixja PUBLIC

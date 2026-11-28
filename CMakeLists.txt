@@ -13,17 +13,17 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/VERSION" NIXJA_VERSION)
 string(STRIP "${NIXJA_VERSION}" NIXJA_VERSION)
 
 find_package(LLVM CONFIG REQUIRED)
-
-include("${CMAKE_SOURCE_DIR}/cmake/toolchain.cmake")
+find_package(Clang CONFIG REQUIRED)
 
 find_package(argparse CONFIG REQUIRED)
 
-find_package(Clang CONFIG REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(TREE_SITTER REQUIRED IMPORTED_TARGET tree-sitter)
+pkg_check_modules(TREE_SITTER_BASH REQUIRED IMPORTED_TARGET tree-sitter-bash)
+
+include("${CMAKE_SOURCE_DIR}/cmake/toolchain.cmake")
 
 add_subdirectory(external/ninja)
-set_target_properties(libninja libninja-re2c PROPERTIES
-    INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF
-)
 add_subdirectory(external/expected-fs)
 add_subdirectory(external/libpatchelf)
 

@@ -16,8 +16,9 @@
 #include <fmt/format.h>
 #include <nlohmann/json.hpp>
 
-#include <clang/Frontend/CompilerInstance.h>
-#include <llvm/TargetParser/Host.h>
+#include <tree_sitter/api.h>
+#include <tree_sitter/tree-sitter-bash.h>
+
 #include <nix/store/store-api.hh>
 #include <nix/util/serialise.hh>
 #include <nix/util/source-accessor.hh>
@@ -34,9 +35,11 @@
 #include <clang/Driver/Action.h>
 #include <clang/Driver/Compilation.h>
 #include <clang/Driver/Driver.h>
+#include <clang/Frontend/CompilerInstance.h>
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/Support/CommandLine.h>
+#include <llvm/TargetParser/Host.h>
 
 #include "common.hpp"
 #include "nixja_gen.hpp"
@@ -86,13 +89,29 @@ struct Derivation {
     std::string output_path;
 };
 
-struct Command {
-    /// The command to run
-    std::string command;
-
-    /// A set of every input src (into the nix store) that this command requires
-    std::unordered_set<std::string> inputSrcs;
+struct TextEdit {
+    uint32_t start;
+    uint32_t end;
+    std::string replacement;
 };
+
+void apply_edits(
+    std::string& source,
+    std::vector<TextEdit>& edits) {
+    std::sort(
+        edits.begin(),
+        edits.end(),
+        [](const auto& a, const auto& b) {
+            return a.start > b.start;
+        });
+
+    for (const auto& edit : edits) {
+        source.replace(
+            edit.start,
+            edit.end - edit.start,
+            edit.replacement);
+    }
+}
 
 // Dynamic derivation outputs must end in .drv. Keep the Ninja output
 // recognizable and include the edge id to prevent sanitized-name collisions.
@@ -171,6 +190,33 @@ bool is_compile_command(clang::driver::Driver& driver, llvm::ArrayRef<const char
     return compiler_jobs == 1;
 }
 
+std::string_view node_text(TSNode node, std::string_view source) {
+    const auto start = ts_node_start_byte(node);
+    const auto end = ts_node_end_byte(node);
+    return source.substr(start, end - start);
+}
+
+void collect_commands(const TSNode node, const std::string_view source, std::vector<CommandInvocation>& commands) {
+    if (std::string_view(ts_node_type(node)) == "command") {
+        const auto name = ts_node_child_by_field_name(node, "name", 4);
+
+        if (!ts_node_is_null(name)) {
+            commands.push_back({
+                .program = node_text(name, source),
+                .command = node_text(node, source),
+                .program_offset = ts_node_start_byte(name),
+            });
+        }
+    }
+
+    for (uint32_t i = 0; i < ts_node_named_child_count(node); ++i) {
+        collect_commands(
+            ts_node_named_child(node, i),
+            source,
+            commands);
+    }
+}
+
 /// Given a generic NINJA command, we parse all the possible NIX STORE paths from it
 /// We also rework the program (the first arg in the command), so that it complies.
 ///
@@ -184,82 +230,141 @@ Result<Command> parseCommand(
     const std::string& source_store_path,
     const nix::ref<nix::Store> store) {
 
-    // Extract executable from command.
-    // TODO: This will break if the file path has spaces
-    const auto end = command.find_first_of(" \t\n\r");
-    const std::string program = command.substr(0, end);
+    TSParser* parser = ts_parser_new();
 
-    // An empty program means its likely a PHONY command
-    if (program.empty())
-        return Command { .command = command, .inputSrcs = { } };
+    if (!parser)
+        return Err("Failed to create treesitter parser");
 
-    const fs::path programPath(program);
+    if (!ts_parser_set_language(parser, tree_sitter_bash())) {
+        ts_parser_delete(parser);
+        return Err("Failed to set bash language in treesitter");
+    }
+
+    TSTree* tree = ts_parser_parse_string(
+        parser,
+        nullptr,
+        command.data(),
+        command.size());
+
+    if (!tree) {
+        ts_parser_delete(parser);
+        return Err("Failed to parse bash command");
+    }
+
+    const TSNode root = ts_tree_root_node(tree);
+
+    if (ts_node_has_error(root)) {
+        ts_tree_delete(tree);
+        ts_parser_delete(parser);
+        return Err("Invalid bash command");
+    }
+
+    std::vector<CommandInvocation> commands;
+
+    collect_commands(root, command, commands);
+
+    // CommandInvocation only references the original command string.
+    // We no longer need the tree or parser.
+    ts_tree_delete(tree);
+    ts_parser_delete(parser);
 
     Command result {
         .command = command,
-        .inputSrcs = parseCompileCommand(command),
+        .inputSrcs = { },
     };
 
-    if (programPath.is_absolute()) {
+    std::vector<TextEdit> edits;
 
-        // Absolute executable in the nix store, e.g. /nix/store/.../bin/clang++
-        if (store->isInStore(programPath.string())) {
-            const auto [storePath, subPath] = store->toStorePath(programPath.string());
-            result.inputSrcs.insert(store->printStorePath(storePath));
-        }
+    for (const auto& invocation : commands) {
+        const std::string program(invocation.program);
+        const fs::path programPath(program);
 
-        else {
-            const fs::path path_relative = programPath.lexically_relative(source_root);
+        // CMake wraps link commands in shell no-ops.
+        if (program == ":")
+            continue;
 
-            if (path_relative.empty() || path_relative.is_absolute() || *path_relative.begin() == "..")
+        // Collect include and library paths for each command.
+        auto paths = parseCompileCommand(
+            std::string(invocation.command));
+
+        result.inputSrcs.insert(paths.begin(), paths.end());
+
+        if (programPath.is_absolute()) {
+
+            // Absolute executable in the Nix store.
+            if (store->isInStore(programPath.string())) {
+                const auto [storePath, subPath] = store->toStorePath(programPath.string());
+
+                result.inputSrcs.insert(
+                    store->printStorePath(storePath));
+            } else {
+                const fs::path path_relative = programPath.lexically_relative(source_root);
+
+                if (path_relative.empty() || path_relative.is_absolute() || *path_relative.begin() == "..")
+                    return Err(
+                        "The program ({}) must be either in the "
+                        "nix store or a part of the source directory.",
+                        program);
+
+                const fs::path source_file = fs::canonical(programPath);
+
+                const auto stored_file = store->addToStore(
+                    nixja_store_name(
+                        source_file.filename().string(),
+                        "nixja-gen"),
+                    nix::makeFSSourceAccessor(source_file),
+                    nix::ContentAddressMethod::Raw::NixArchive);
+
+                const std::string store_path = store->printStorePath(stored_file);
+
+                // Queue the replacement rather than immediately
+                // modifying the command.
+                edits.push_back({
+                    .start = invocation.program_offset,
+                    .end = invocation.program_offset + static_cast<uint32_t>(invocation.program.size()),
+                    .replacement = store_path,
+                });
+
+                result.inputSrcs.insert(store_path);
+            }
+
+        } else if (programPath.has_parent_path()) {
+
+            // Relative executable, e.g. ./scripts/generate.
+            const fs::path root = fs::canonical(source_root);
+
+            const fs::path resolved = fs::weakly_canonical(root / programPath);
+
+            const fs::path relative = resolved.lexically_relative(root);
+
+            if (relative.empty() || relative.is_absolute())
                 return Err(
-                    "The program ({}) must be either in the nix store or a part of the source directory.",
-                    /// TODO: Investigate whether I can get a string_view instead
-                    programPath.string());
+                    "Executable cannot be resolved inside source root");
 
-            const fs::path source_file = fs::canonical(programPath);
-            const auto stored_file = store->addToStore(
-                nixja_store_name(source_file.filename().string(), "nixja-gen"),
-                nix::makeFSSourceAccessor(source_file),
-                // Commands may be scripts; retain their executable bit.
-                nix::ContentAddressMethod::Raw::NixArchive);
-            const std::string store_path = store->printStorePath(stored_file);
+            for (const auto& component : relative) {
+                if (component == "..")
+                    return Err(
+                        "Executable escapes source root: {}",
+                        program);
+            }
 
-            // Execute the exact store object declared as an input, rather than
-            // referring to the source-tree archive that happens to contain it.
-            result.command.replace(0, program.size(), store_path);
-            result.inputSrcs.insert(store_path);
+            // Relative executable is already included in
+            // the source tree.
+
+        } else {
+
+            // Bare executable name, e.g. clang++, gcc, python3.
+            const fs::path path = TRY(parse_which(program, store));
+
+            const auto [storePath, subPath] = store->toStorePath(path.string());
+
+            result.inputSrcs.insert(
+                store->printStorePath(storePath));
         }
-    } else if (programPath.has_parent_path()) {
-        // Relative executable, e.g. ./scripts/generate or bin/tool
-
-        const fs::path root = fs::canonical(source_root);
-        const fs::path resolved = fs::weakly_canonical(root / programPath);
-
-        const fs::path relative = resolved.lexically_relative(root);
-
-        if (relative.empty() || relative.is_absolute())
-            return Err("Executable cannot be resolved inside source root");
-
-        // TODO: I think we only need to check the first component
-        // but verify this with lexically_relative
-        for (const auto& component : relative) {
-            if (component == "..")
-                return Err(fmt::format("Executable escapes source root: {}", program));
-        }
-
-        // Relative executable is already included in the source tree.
-        // No additional Nix store input is needed.
-
-    } else {
-        // Bare executable name, e.g. clang++, gcc, python3
-        // TODO: Eventually we'll need c
-
-        // TODO: Perhaps rework parse_which to return a nix store path directly?
-        const fs::path path = TRY(parse_which(program, store));
-        const auto [storePath, subPath] = store->toStorePath(path.string());
-        result.inputSrcs.insert(store->printStorePath(storePath));
     }
+
+    // Apply replacements in descending byte-offset order.
+    apply_edits(result.command, edits);
 
     return result;
 }
@@ -531,7 +636,21 @@ Result<void> process_dynamic_edges(
         for (const auto* output : edge->outputs_)
             edge_outputs.push_back(output->path());
 
-        const auto parsed = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
+        auto parsed = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
+        // CMake emits absolute source-tree paths, which do not exist in the builder.
+        const std::string source_prefix = source_root.string() + "/";
+        const std::string relative_prefix = fs::path(".").lexically_relative(build_relative).generic_string() + "/";
+        size_t position = 0;
+        while ((position = parsed.command.find(source_prefix, position)) != std::string::npos) {
+            parsed.command.replace(position, source_prefix.size(), relative_prefix);
+            position += relative_prefix.size();
+        }
+        fs::path input_file = edge->inputs_.front()->path();
+        if (input_file.is_absolute()) {
+            const auto relative = input_file.lexically_relative(source_root);
+            if (!relative.empty() && *relative.begin() != "..")
+                input_file = fs::path(".").lexically_relative(build_relative) / relative;
+        }
 
         database.push_back({
             { "directory", (source_root / build_relative).lexically_normal().string() },
@@ -541,7 +660,7 @@ Result<void> process_dynamic_edges(
 
             /// Inputs found by parsing the command
             { "nixja_inputs", parsed.inputSrcs },
-            { "file", edge->inputs_.front()->path() },
+            { "file", input_file.generic_string() },
             { "output", edge->outputs_.front()->path() },
             { "command", parsed.command },
             { "nixja_output", output_name },
@@ -550,7 +669,7 @@ Result<void> process_dynamic_edges(
         for (const Node* input : edge->inputs_) {
             const fs::path path = input->path();
             const Edge* producer = input->in_edge();
-            if (path.is_absolute() || !producer)
+            if (path.is_absolute() || !producer || producer->is_phony())
                 continue;
             const fs::path destination = (build_relative / path).lexically_normal();
             const std::string reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
@@ -634,13 +753,15 @@ Result<void> topo_process(
     for (const auto edge : closure) {
         std::unordered_set<size_t> producers;
 
-        for (const auto node : edge->inputs_) {
+        InputsCollector edge_inputs;
+        edge_inputs.VisitNode(edge->outputs_.front());
+        for (const auto node : edge_inputs.inputs()) {
             /// producer -> consumer
             /// producer outputs a node that consumer needs
             const auto producer = node->in_edge();
 
             // A nullptr means the node doesn't have a dependency
-            if (producer)
+            if (producer && producer != edge && closure.contains(producer))
                 producers.insert(producer->id_);
         }
 
@@ -691,6 +812,7 @@ Result<void> topo_process(
     clang::DiagnosticOptions diagnostic_options;
     auto diagnostics = clang::CompilerInstance::createDiagnostics(*llvm::vfs::getRealFileSystem(), diagnostic_options);
     clang::driver::Driver compiler("clang++", llvm::sys::getDefaultTargetTriple(), *diagnostics);
+    size_t processed = 0;
     while (!queue.empty()) {
         std::vector<const Edge*> dynamic_edges;
 
@@ -734,6 +856,7 @@ Result<void> topo_process(
                 store,
                 edge_map));
 
+            ++processed;
             mark_processed(edge);
         }
 
@@ -749,10 +872,15 @@ Result<void> topo_process(
             store,
             edge_map));
 
+        processed += dynamic_edges.size();
+
         // Release consumers only after the entire batch is processed.
         for (const auto edge : dynamic_edges)
             mark_processed(edge);
     }
+
+    if (processed != closure.size())
+        return Err("Could not process all Ninja edges for '{}': dependency cycle or unsupported graph", target);
 
     return { };
 }
