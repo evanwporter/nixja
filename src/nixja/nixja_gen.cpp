@@ -279,11 +279,12 @@ Result<Command> parseCommand(
         const std::string program(invocation.program);
         const fs::path programPath(program);
 
-        // CMake wraps link commands in shell no-ops.
+        // `:` is a no-op
         if (program == ":")
             continue;
 
         // Collect include and library paths for each command.
+        // TODO: Do we need to make sure its a compile command first
         auto paths = parseCompileCommand(
             std::string(invocation.command));
 
@@ -291,7 +292,7 @@ Result<Command> parseCommand(
 
         if (programPath.is_absolute()) {
 
-            // Absolute executable in the Nix store.
+            // Absolute executable already in the Nix store.
             if (store->isInStore(programPath.string())) {
                 const auto [storePath, subPath] = store->toStorePath(programPath.string());
 
@@ -299,8 +300,11 @@ Result<Command> parseCommand(
                     store->printStorePath(storePath));
             }
 
-            // Executable is relative to the source_root
             else {
+
+                // Absolute executable is not in the nix store, but located at a path under source_root.
+                // We need to add it to the nix store.
+
                 const fs::path path_relative = programPath.lexically_relative(source_root);
 
                 // Check if executable is located outside of source_root
