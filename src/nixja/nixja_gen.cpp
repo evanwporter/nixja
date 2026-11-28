@@ -95,9 +95,13 @@ struct TextEdit {
     std::string replacement;
 };
 
+/// Apply list of TextEdits to a string
 void apply_edits(
     std::string& source,
     std::vector<TextEdit>& edits) {
+
+    // reverse sorting since changing the substring sizes at the end
+    // won't mess up the substrings at the beginning
     std::sort(
         edits.begin(),
         edits.end(),
@@ -373,7 +377,7 @@ Result<Command> parseCommand(
         }
     }
 
-    // Apply replacements in descending byte-offset order.
+    // Apply replacements
     apply_edits(result.command, edits);
 
     return result;
