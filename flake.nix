@@ -78,6 +78,8 @@
 						final.llvmPackages_22.llvm
 						final.llvmPackages_22.clang
 						final.llvmPackages_22.clang-unwrapped
+						final.tree-sitter
+						(tree-sitter-bash final)
 					];
 
 					buildFlags = ["nixja-task"];
@@ -115,6 +117,8 @@
 						final.llvmPackages_22.llvm
 						final.llvmPackages_22.clang
 						final.llvmPackages_22.clang-unwrapped
+						final.tree-sitter
+						(tree-sitter-bash final)
 					];
 
 					cmakeFlags = [
