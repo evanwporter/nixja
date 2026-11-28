@@ -284,7 +284,7 @@ Result<Command> parseCommand(
         const fs::path programPath(program);
 
         // `:` is a no-op
-        if (program == ":")
+        if (program == ":" || program == "cd")
             continue;
 
         // Collect include and library paths for each command.
@@ -544,9 +544,15 @@ Result<void> process_static_edge(
 
         // Otherwise a previous build edge / derivation produced it, and so
         // we need to obtain the output path of the derivation.
+        fs::path path = input->path();
+        if (path.is_absolute()) {
+            path = path.lexically_relative(source_root / build_relative);
+            if (path.empty() || *path.begin() == "..")
+                return Err("Generated input is outside the build directory: {}", input->path());
+        }
         task_spec.inputs.emplace_back(
-            fs::path(edge_map[producer->id_].output_path) / input->path(),
-            (build_relative / input->path()).lexically_normal());
+            fs::path(edge_map[producer->id_].output_path) / path,
+            (build_relative / path).lexically_normal());
     }
 
     // Add every source file to the store and returns a list of StoreFiles
@@ -558,12 +564,28 @@ Result<void> process_static_edge(
         stored_source_inputs.begin(),
         stored_source_inputs.end());
 
-    for (const auto output : edge->outputs_)
-        task_spec.outputs.push_back(output->path());
+    for (const auto output : edge->outputs_) {
+        fs::path path = output->path();
+        if (path.is_absolute()) {
+            path = path.lexically_relative(source_root / build_relative);
+            if (path.empty() || *path.begin() == "..")
+                return Err("Output is outside the build directory: {}", output->path());
+        }
+        path = path.lexically_normal();
+        if (std::find(task_spec.outputs.begin(), task_spec.outputs.end(), path) == task_spec.outputs.end())
+            task_spec.outputs.push_back(path);
+    }
     task_spec.build_relative = build_relative;
     task_spec.command = TRY(parseCommand(
                                 edge->EvaluateCommand(), source_root, source_store_path, store))
                             .command;
+    const std::string source_prefix = source_root.string() + "/";
+    const std::string relative_prefix = fs::path(".").lexically_relative(build_relative).generic_string() + "/";
+    size_t position = 0;
+    while ((position = task_spec.command.find(source_prefix, position)) != std::string::npos) {
+        task_spec.command.replace(position, source_prefix.size(), relative_prefix);
+        position += relative_prefix.size();
+    }
 
     /// Obtain working NIXJA_TASK_PATH
     const fs::path configured_task_path = NIXJA_TASK_PATH;
@@ -687,10 +709,15 @@ Result<void> process_dynamic_edges(
             { "nixja_outputs", edge_outputs },
         });
         for (const Node* input : edge->inputs_) {
-            const fs::path path = input->path();
+            fs::path path = input->path();
             const Edge* producer = input->in_edge();
-            if (path.is_absolute() || !producer || producer->is_phony())
+            if (!producer || producer->is_phony())
                 continue;
+            if (path.is_absolute()) {
+                path = path.lexically_relative(source_root / build_relative);
+                if (path.empty() || *path.begin() == "..")
+                    return Err("Generated input is outside the build directory: {}", input->path());
+            }
             const fs::path destination = (build_relative / path).lexically_normal();
             const std::string reference = edge_map[producer->id_].output_path + "/" + path.generic_string();
             linkPhase += fmt::format(
