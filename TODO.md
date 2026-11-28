@@ -45,7 +45,7 @@
 
 21. Define a way to pass outside env into the derivation
 
-22. Find a way to batch scan dependencies so I can utilize a shared cache
+22. ~~Find a way to batch scan dependencies so I can utilize a shared cache~~
 
 23. Integrate this into `meson` & `cmake`
 
@@ -79,7 +79,8 @@
 
 37. Provide list of clear limitations for nixja (such as using clang-scan-deps which requires a clear build command)
 
-38. Look into how `bear` seperates the compile commands from all other commands.
+38. ~~Look into how `bear` seperates the compile commands from all other commands.~~
+    - Will just be using clang to detech compilation commands from other commands
 
 39. ~~Patch ELF with `so` location in nix store~~
 
@@ -101,3 +102,13 @@
 46. Link against bash treesitter and use it to parse rudimentary bash commands
     - `: & clang ... & :`
         - Where `:`, `clang ...`, `:` would get parsed as seperate commands by `parseCommand`
+
+47. Tweak `ClangScanDeps.cpp` to pass options instead of passing args
+
+48. Support ninja `dyndeps`
+
+49. Add fortran tests (after #48)
+
+50. Add basic C++ module test (after #48)
+
+51. Strip `ClangScanDeps.cpp` some more of unused stuff
