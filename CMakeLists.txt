@@ -31,6 +31,7 @@ add_subdirectory(src/common)
 add_subdirectory(src/nixja)
 add_subdirectory(src/nixja-scan-deps)
 add_subdirectory(src/nixja-task)
+add_subdirectory(src/clang-scan-deps)
 
 option(NIXJA_BUILD_TESTS "Build nixja tests" ON)
 if(NIXJA_BUILD_TESTS)
