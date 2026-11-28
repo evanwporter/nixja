@@ -647,19 +647,25 @@ Result<void> process_dynamic_edges(
             edge_outputs.push_back(output->path());
 
         auto parsed = TRY(parseCommand(edge->EvaluateCommand(), source_root, source_store_path, store));
-        // CMake emits absolute source-tree paths, which do not exist in the builder.
-        const std::string source_prefix = source_root.string() + "/";
-        const std::string relative_prefix = fs::path(".").lexically_relative(build_relative).generic_string() + "/";
-        size_t position = 0;
-        while ((position = parsed.command.find(source_prefix, position)) != std::string::npos) {
-            parsed.command.replace(position, source_prefix.size(), relative_prefix);
-            position += relative_prefix.size();
-        }
+
         fs::path input_file = edge->inputs_.front()->path();
-        if (input_file.is_absolute()) {
-            const auto relative = input_file.lexically_relative(source_root);
-            if (!relative.empty() && *relative.begin() != "..")
-                input_file = fs::path(".").lexically_relative(build_relative) / relative;
+
+        // Convert absolute paths under source_root in the command to relative paths
+        // FIXME: there's a lot of ways this could go wrong
+        {
+            // CMake emits absolute source-tree paths, which do not exist in the builder.
+            const std::string source_prefix = source_root.string() + "/";
+            const std::string relative_prefix = fs::path(".").lexically_relative(build_relative).generic_string() + "/";
+            size_t position = 0;
+            while ((position = parsed.command.find(source_prefix, position)) != std::string::npos) {
+                parsed.command.replace(position, source_prefix.size(), relative_prefix);
+                position += relative_prefix.size();
+            }
+            if (input_file.is_absolute()) {
+                const auto relative = input_file.lexically_relative(source_root);
+                if (!relative.empty() && *relative.begin() != "..")
+                    input_file = fs::path(".").lexically_relative(build_relative) / relative;
+            }
         }
 
         database.push_back({
