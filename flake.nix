@@ -26,6 +26,21 @@
 		forAllSystems = f:
 			nixpkgs.lib.genAttrs systems (system:
 				f (pkgsFor system));
+
+		tree-sitter-bash = pkgs:
+			pkgs.stdenv.mkDerivation {
+				inherit
+					(pkgs.tree-sitter.grammars.tree-sitter-bash)
+					version
+					src
+					;
+
+				pname = "tree-sitter-bash";
+
+				makeFlags = [
+					"PREFIX=$(out)"
+				];
+			};
 	in {
 		overlays.default = final: prev: {
 			corePackages = with final; [
@@ -63,6 +78,8 @@
 						final.llvmPackages_22.llvm
 						final.llvmPackages_22.clang
 						final.llvmPackages_22.clang-unwrapped
+						final.tree-sitter
+						(tree-sitter-bash final)
 					];
 
 					buildFlags = ["nixja-task"];
@@ -100,6 +117,8 @@
 						final.llvmPackages_22.llvm
 						final.llvmPackages_22.clang
 						final.llvmPackages_22.clang-unwrapped
+						final.tree-sitter
+						(tree-sitter-bash final)
 					];
 
 					cmakeFlags = [
@@ -160,16 +179,18 @@
 							final.pkg-config
 						];
 
-					buildInputs = [
-						final.argparse
-						final.fmt
-						final.spdlog
-						final.libblake3
-						final.nlohmann_json
-						final.nix
-						final.llvmPackages_22.llvm
-						final.llvmPackages_22.clang
-						final.llvmPackages_22.clang-unwrapped
+					buildInputs = with final; [
+						argparse
+						fmt
+						spdlog
+						libblake3
+						nlohmann_json
+						nix
+						llvmPackages_22.llvm
+						llvmPackages_22.clang
+						llvmPackages_22.clang-unwrapped
+						tree-sitter
+						(tree-sitter-bash final)
 					];
 
 					buildFlags = ["nixja"];
@@ -252,6 +273,8 @@
 											argparse
 											spdlog
 											gtest
+											tree-sitter
+											(tree-sitter-bash pkgs)
 
 											# Nix
 											nix

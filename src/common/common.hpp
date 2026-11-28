@@ -195,7 +195,7 @@ std::vector<StoreFile> add_dependencies_to_store(
 
         // Ninja's phony nodes (for example, `PHONY`) are graph markers, not
         // files that can be copied into the store.
-        if (!std::filesystem::exists(absolute))
+        if (!std::filesystem::is_regular_file(absolute))
             continue;
 
         const std::filesystem::path file = std::filesystem::canonical(absolute);
