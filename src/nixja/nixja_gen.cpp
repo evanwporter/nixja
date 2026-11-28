@@ -350,6 +350,7 @@ Result<Command> parseCommand(
                 return Err(
                     "Executable cannot be resolved inside source root");
 
+            // TODO: I believe we only need to check the first component
             for (const auto& component : relative) {
                 if (component == "..")
                     return Err(
