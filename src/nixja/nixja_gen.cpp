@@ -708,7 +708,11 @@ Result<void> process_dynamic_edges(
             { "nixja_output", output_name },
             { "nixja_outputs", edge_outputs },
         });
-        for (const Node* input : edge->inputs_) {
+        // Generated headers can be hidden behind CMake's phony order-only
+        // dependencies, so stage the full input closure for the scanner.
+        InputsCollector scan_inputs;
+        scan_inputs.VisitNode(edge->outputs_.front());
+        for (const Node* input : scan_inputs.inputs()) {
             fs::path path = input->path();
             const Edge* producer = input->in_edge();
             if (!producer || producer->is_phony())
