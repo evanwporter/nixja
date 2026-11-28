@@ -54,6 +54,8 @@ using json = nlohmann::json;
 // TODO: Check if I need the full thing
 struct Derivation {
 
+    // TODO: instead of using all this. We should really set the input.drvs
+    //
     // const nix::StorePath wrapper_drv =
     //     store->parseStorePath("/nix/store/<hash>-main_o.drv.drv");
     //
@@ -575,7 +577,7 @@ Result<void> process_dynamic_edges(
     /// The output of this is a derivation with multiple output possibilities. By output possibility I mean
     /// "out".
     const DerivationSpec spec {
-        .name = "compile-batch",
+        .name = "compile-scan-batch",
         .storeNamePrefix = "nixja-gen",
         .linkPhase = linkPhase,
         .buildPhase = fmt::format("{} '{}'", NIXJA_SCAN_DEPS_PATH, db_path),
@@ -761,6 +763,10 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
     // Load Ninja build graph.
     const fs::path ninja_file = build_dir / "build.ninja";
 
+    // Change CWD to `build_dir` because if the `ninja_file` has any relative includes
+    // then it will look relative to the `build_dir`
+    fs::current_path(build_dir);
+
     State state;
     RealDiskInterface disk;
     ManifestParser parser(&state, &disk);
@@ -771,6 +777,8 @@ Result<std::string> nixja_gen(const std::string& target, const fs::path& source_
         return Err(error);
 
     spdlog::debug("Loaded Ninja manifest with {} edges", state.edges_.size());
+
+    fs::current_path(source_root);
 
     nix::experimentalFeatureSettings.experimentalFeatures.set(
         "ca-derivations dynamic-derivations");
