@@ -24,11 +24,6 @@ pkg_check_modules(TREE_SITTER_BASH REQUIRED IMPORTED_TARGET tree-sitter-bash)
 include("${CMAKE_SOURCE_DIR}/cmake/toolchain.cmake")
 
 add_subdirectory(external/ninja)
-# Ninja enables IPO for release builds, but these object files are archived
-# into libnixja with the toolchain's regular archiver.
-set_target_properties(libninja libninja-re2c PROPERTIES
-    INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF
-)
 add_subdirectory(external/expected-fs)
 add_subdirectory(external/libpatchelf)
 
@@ -37,6 +32,10 @@ add_subdirectory(src/nixja)
 add_subdirectory(src/nixja-scan-deps)
 add_subdirectory(src/nixja-task)
 add_subdirectory(src/clang-scan-deps)
+
+set_target_properties(libninja libninja-re2c PROPERTIES
+    INTERPROCEDURAL_OPTIMIZATION_RELEASE OFF
+)
 
 option(NIXJA_BUILD_TESTS "Build nixja tests" ON)
 if(NIXJA_BUILD_TESTS)
