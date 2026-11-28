@@ -81,7 +81,7 @@
 
 38. Look into how `bear` seperates the compile commands from all other commands.
 
-39. Patch ELF with `so` location in nix store
+39. ~~Patch ELF with `so` location in nix store~~
 
 40. ~~For nixja-gen static deps; build files in a env with only the input objects (as opposed to the entire source root directory)~~
 
@@ -91,3 +91,13 @@
 
 42. Create global reference of which files have been added to the store so I don't try and add a file twice (primarily in nixja-gen)
     - Maybe its valuable to pass this onto nixja-scan-deps?
+
+43. Add browse tool (like `ninja -t browse`)
+
+44. Look into how phony rules are parsed
+
+45. Add support for `-f` argument to nixja
+
+46. Link against bash treesitter and use it to parse rudimentary bash commands
+    - `: & clang ... & :`
+        - Where `:`, `clang ...`, `:` would get parsed as seperate commands by `parseCommand`
